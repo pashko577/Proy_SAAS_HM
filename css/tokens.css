@@ -1,0 +1,233 @@
+/* ==========================================================================
+   School HR SaaS — Design tokens v1.2 (design_system.md §5, §35, §39–§41)
+
+   Arquitectura en 3 capas:
+     1. Escala del tema      --p-50 … --p-900          (cambia con data-theme-color)
+     2. Tokens de rol        --primary, --primary-soft… (cambian con data-bs-theme)
+     3. Componentes          --sb-*, --toast-*…         (consumen roles, nunca la escala)
+
+   Atributos en <html>:
+     data-bs-theme="light|dark"                 → modo (Bootstrap 5.3 nativo)
+     data-theme-color="bosque|indigo|ciruela|grafito|oceano|institucional"
+     data-sidebar="claro|color"
+   ========================================================================== */
+
+/* ---------- 1. Escalas de tema ---------- */
+:root,
+:root[data-theme-color="bosque"] {          /* Tema por defecto */
+  --p-50: #ECF6F3; --p-100: #D3EBE4; --p-200: #A7DCCB; --p-300: #6FC2AA;
+  --p-500: #2A8C72; --p-700: #1D6B57; --p-800: #175545; --p-900: #0F3B30;
+}
+:root[data-theme-color="indigo"] {
+  --p-50: #EEF0FE; --p-100: #DEE1FC; --p-200: #C7CBFA; --p-300: #A3A9F7;
+  --p-500: #5B5FE0; --p-700: #4338CA; --p-800: #3730A3; --p-900: #262073;
+}
+:root[data-theme-color="ciruela"] {
+  --p-50: #F8EFF7; --p-100: #EFDDEE; --p-200: #E6C6E4; --p-300: #D19BCE;
+  --p-500: #9E4C9B; --p-700: #7A3478; --p-800: #62295F; --p-900: #421B40;
+}
+:root[data-theme-color="grafito"] {
+  --p-50: #F1F3F6; --p-100: #E3E7EC; --p-200: #CDD5E0; --p-300: #AEBACB;
+  --p-500: #66758A; --p-700: #3D4A57; --p-800: #2E3843; --p-900: #1E252D;
+}
+:root[data-theme-color="oceano"] {
+  --p-50: #EAF3F9; --p-100: #D5E6F2; --p-200: #B5D3EA; --p-300: #86B7DA;
+  --p-500: #3A78A6; --p-700: #24557A; --p-800: #1D4563; --p-900: #17324D;
+}
+/* "institucional": la escala se genera en JS desde el color del colegio (§40.3) */
+
+/* ---------- 2. Modo claro ---------- */
+:root {
+  color-scheme: light;
+
+  /* Neutros */
+  --color-bg: #F6F7F8;
+  --color-surface: #FFFFFF;
+  --color-surface-2: #F1F3F5;
+  --color-surface-3: #E8EBEF;
+  --color-border: #DCE0E5;
+  --color-border-strong: #8E9AA5;
+  --color-text: #17202A;
+  --color-text-muted: #5F6B76;
+  --color-placeholder: #7B8791;
+  --color-overlay: rgba(15, 19, 24, .38);
+
+  /* Roles de marca (derivados de la escala del tema) */
+  --primary: var(--p-700);
+  --primary-hover: var(--p-800);
+  --on-primary: #FFFFFF;
+  --primary-text: var(--p-700);
+  --primary-strong: var(--p-900);
+  --primary-soft: var(--p-50);
+  --primary-soft-2: var(--p-100);
+  --primary-border: var(--p-200);
+  --control-accent: var(--p-700);
+  --primary-ring: color-mix(in srgb, var(--p-500) 45%, transparent);
+
+  /* Acento institucional (decorativo, nunca estado) */
+  --color-accent: #D99A22;
+  --color-accent-text: #8A5E0F;
+  --accent-soft: #FBF3E2;
+  --accent-strong: #5C3E05;
+
+  /* Semánticos: base / on / text / soft / border / icon */
+  --color-success: #0072B2; --color-on-success: #FFFFFF; --color-success-text: #005A8C; --color-success-soft: #E5F1F8; --color-success-border: #B9D8EA; --color-success-icon: #0072B2;
+  --color-warning: #E69F00; --color-on-warning: #000000; --color-warning-text: #8A5A00; --color-warning-soft: #FDF3DC; --color-warning-border: #F2D594; --color-warning-icon: #B77E00;
+  --color-danger:  #D55E00; --color-on-danger:  #000000; --color-danger-text:  #A63F00; --color-danger-soft:  #FBEAE0; --color-danger-border:  #F1C3A6; --color-danger-icon:  #D55E00;
+  --color-info:    #56B4E9; --color-on-info:    #000000; --color-info-text:    #1F6FA0; --color-info-soft:    #E6F4FC; --color-info-border:    #BFE1F5; --color-info-icon:    #2C93CF;
+  --color-early:   #CC79A7; --color-on-early:   #000000; --color-early-text:   #8E3F6E; --color-early-soft:   #F7EAF1; --color-early-border:   #E8C4D8; --color-early-icon:   #B35A8C;
+  --color-neutral: #8E9AA5; --color-on-neutral: #000000; --color-neutral-text: #5F6B76; --color-neutral-soft: #F1F3F5; --color-neutral-border: #DCE0E5; --color-neutral-icon: #7B8791;
+  --color-danger-solid: #A63F00; --color-danger-hover: #843200;   /* botón destructivo */
+
+  /* Superficies especiales */
+  --header-bg: color-mix(in srgb, var(--color-surface) 90%, transparent);
+  --hero-bg: var(--p-900);
+  --table-hover: color-mix(in srgb, var(--color-surface-2) 55%, var(--color-surface));
+  --skeleton-a: #ECEFF2; --skeleton-b: #F5F7F9;
+  --scroll-track: #F1F3F5; --scroll-thumb: #B8C1CA; --scroll-thumb-hover: #8E9AA5;
+  --tooltip-bg: #17202A; --tooltip-text: #FFFFFF;
+
+  /* Sidebar: estilo "claro" (por defecto) */
+  --sb-bg: var(--color-surface);
+  --sb-border: var(--color-border);
+  --sb-text: var(--color-text-muted);
+  --sb-text-strong: var(--color-text);
+  --sb-muted: var(--color-text-muted);
+  --sb-hover: var(--color-surface-2);
+  --sb-active-bg: var(--primary-soft);
+  --sb-active-text: var(--primary-strong);
+  --sb-marker: var(--primary);
+  --sb-logo-bg: var(--primary);
+  --sb-logo-text: var(--on-primary);
+  --sb-kbd-border: var(--color-border);
+
+  /* Toasts (§19) */
+  --toast-bg: var(--color-surface);
+  --toast-width: 400px;
+  --toast-duration-short: 4500ms;
+  --toast-duration-long: 6500ms;
+  --toast-duration-error: 8000ms;
+
+  /* Tipografía */
+  --font-sans: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --fs-caption: .75rem; --fs-small: .8125rem; --fs-body: .9375rem;
+  --fs-h3: 1.0625rem; --fs-h2: 1.375rem; --fs-h1: 1.875rem; --fs-data: 2.5rem;
+
+  /* Radios */
+  --radius-sm: 6px; --radius-md: 10px; --radius-lg: 14px; --radius-xl: 18px; --radius-pill: 999px;
+
+  /* Espaciado */
+  --space-1: 4px;  --space-2: 8px;  --space-3: 12px; --space-4: 16px; --space-5: 20px;
+  --space-6: 24px; --space-8: 32px; --space-10: 40px; --space-12: 48px; --space-16: 64px;
+
+  /* Elevación */
+  --shadow-1: 0 1px 2px rgba(16,24,40,.05);
+  --shadow-2: 0 4px 16px rgba(16,24,40,.06);
+  --shadow-3: 0 16px 48px rgba(16,24,40,.14);
+  --focus-ring: 0 0 0 3px var(--primary-ring);
+
+  /* Layout */
+  --sidebar-w: 256px; --sidebar-w-collapsed: 76px; --header-h: 64px; --content-max: 1440px;
+
+  /* Movimiento */
+  --motion-fast: 140ms; --motion-normal: 220ms; --motion-slow: 320ms;
+  --ease-standard: cubic-bezier(.2,.8,.2,1);
+}
+
+/* ---------- Sidebar estilo "color" (modo claro) ---------- */
+:root[data-sidebar="color"] {
+  --sb-bg: var(--p-900);
+  --sb-border: rgba(255,255,255,.09);
+  --sb-text: rgba(255,255,255,.78);
+  --sb-text-strong: #FFFFFF;
+  --sb-muted: rgba(255,255,255,.62);
+  --sb-hover: rgba(255,255,255,.07);
+  --sb-active-bg: rgba(255,255,255,.12);
+  --sb-active-text: #FFFFFF;
+  --sb-marker: var(--p-300);
+  --sb-logo-bg: var(--p-300);
+  --sb-logo-text: var(--p-900);
+  --sb-kbd-border: rgba(255,255,255,.2);
+}
+
+/* ---------- 3. Modo oscuro ---------- */
+:root[data-bs-theme="dark"] {
+  color-scheme: dark;
+
+  --color-bg: #0F1318;
+  --color-surface: #161B22;
+  --color-surface-2: #1C232C;
+  --color-surface-3: #242C36;
+  --color-border: #2A333E;
+  --color-border-strong: #5E6B78;
+  --color-text: #E6EAEE;
+  --color-text-muted: #9AA6B2;
+  --color-placeholder: #7D8995;
+  --color-overlay: rgba(0, 0, 0, .55);
+
+  --primary: var(--p-300);
+  --primary-hover: var(--p-200);
+  --on-primary: var(--p-900);
+  --primary-text: var(--p-300);
+  --primary-strong: var(--p-200);
+  --primary-soft: color-mix(in srgb, var(--p-500) 14%, var(--color-surface));
+  --primary-soft-2: color-mix(in srgb, var(--p-500) 24%, var(--color-surface));
+  --primary-border: color-mix(in srgb, var(--p-300) 35%, var(--color-surface));
+  --control-accent: var(--p-500);
+  --primary-ring: color-mix(in srgb, var(--p-300) 50%, transparent);
+
+  --color-accent: #E2B04A;
+  --color-accent-text: #E2B04A;
+  --accent-soft: color-mix(in srgb, #D99A22 16%, var(--color-surface));
+  --accent-strong: #F3D08A;
+
+  /* La base Okabe-Ito se mantiene; se aclaran text y se oscurecen soft/border */
+  --color-success-text: #5CB3EA; --color-success-soft: color-mix(in srgb, #0072B2 20%, var(--color-surface)); --color-success-border: color-mix(in srgb, #0072B2 45%, var(--color-surface)); --color-success-icon: #5CB3EA;
+  --color-warning-text: #F2B84B; --color-warning-soft: color-mix(in srgb, #E69F00 16%, var(--color-surface)); --color-warning-border: color-mix(in srgb, #E69F00 40%, var(--color-surface)); --color-warning-icon: #F2B84B;
+  --color-danger-text:  #F48C52; --color-danger-soft:  color-mix(in srgb, #D55E00 18%, var(--color-surface)); --color-danger-border:  color-mix(in srgb, #D55E00 42%, var(--color-surface)); --color-danger-icon:  #F48C52;
+  --color-info-text:    #86CDF2; --color-info-soft:    color-mix(in srgb, #56B4E9 16%, var(--color-surface)); --color-info-border:    color-mix(in srgb, #56B4E9 40%, var(--color-surface)); --color-info-icon:    #86CDF2;
+  --color-early-text:   #E5A1C8; --color-early-soft:   color-mix(in srgb, #CC79A7 16%, var(--color-surface)); --color-early-border:   color-mix(in srgb, #CC79A7 40%, var(--color-surface)); --color-early-icon:   #E5A1C8;
+  --color-neutral-text: #9AA6B2; --color-neutral-soft: var(--color-surface-2); --color-neutral-border: var(--color-border); --color-neutral-icon: #9AA6B2;
+
+  --header-bg: color-mix(in srgb, var(--color-surface) 88%, transparent);
+  --hero-bg: color-mix(in srgb, var(--p-900) 55%, #0B0E12);
+  --table-hover: var(--color-surface-2);
+  --skeleton-a: #1F262F; --skeleton-b: #283039;
+  --scroll-track: #12171D; --scroll-thumb: #38424D; --scroll-thumb-hover: #4E5A66;
+  --tooltip-bg: #E6EAEE; --tooltip-text: #0F1318;
+
+  --shadow-1: 0 1px 2px rgba(0,0,0,.4);
+  --shadow-2: 0 4px 16px rgba(0,0,0,.35);
+  --shadow-3: 0 16px 48px rgba(0,0,0,.55);
+
+  --sb-logo-text: var(--on-primary);
+}
+:root[data-bs-theme="dark"][data-sidebar="color"] {
+  --sb-bg: color-mix(in srgb, var(--p-900) 60%, #0B0E12);
+  --sb-marker: var(--p-300);
+  --sb-logo-bg: var(--p-300);
+  --sb-logo-text: var(--p-900);
+}
+
+/* ---------- Mapeo a Bootstrap 5.3 (vale para ambos modos) ---------- */
+:root, :root[data-bs-theme="dark"] {
+  --bs-body-font-family: var(--font-sans);
+  --bs-body-font-size: var(--fs-body);
+  --bs-body-line-height: 1.5;
+  --bs-body-color: var(--color-text);
+  --bs-body-bg: var(--color-bg);
+  --bs-emphasis-color: var(--color-text);
+  --bs-heading-color: var(--color-text);
+  --bs-secondary-color: var(--color-text-muted);
+  --bs-secondary-bg: var(--color-surface-2);
+  --bs-tertiary-bg: var(--color-surface-2);
+  --bs-border-color: var(--color-border);
+  --bs-border-radius: var(--radius-sm);
+  --bs-border-radius-sm: var(--radius-sm);
+  --bs-border-radius-lg: var(--radius-lg);
+  --bs-border-radius-xl: var(--radius-xl);
+  --bs-border-radius-pill: var(--radius-pill);
+  --bs-focus-ring-color: var(--primary-ring);
+  --bs-box-shadow: var(--shadow-2);
+  --bs-box-shadow-lg: var(--shadow-3);
+}

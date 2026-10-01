@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="es" data-bs-theme="light" data-theme-color="bosque" data-sidebar="claro">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>School HR — Prototipo</title>
+  <script>
+    /* Aplica apariencia antes del primer pintado para evitar parpadeo (§39.5) */
+    (function () {
+      try {
+        var g = function (k, d) { var v = localStorage.getItem('shr.' + k); return v === null ? d : JSON.parse(v); };
+        var mode = g('mode', 'system'), theme = g('theme', 'bosque'), sb = g('sidebar', 'claro'), scale = g('customScale', null);
+        var dark = mode === 'dark' || (mode === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        var r = document.documentElement;
+        r.setAttribute('data-bs-theme', dark ? 'dark' : 'light');
+        r.setAttribute('data-theme-color', theme);
+        r.setAttribute('data-sidebar', sb);
+        if (theme === 'institucional' && scale) for (var k in scale) r.style.setProperty('--p-' + k, scale[k]);
+      } catch (e) {}
+    })();
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+  <link href="css/tokens.css" rel="stylesheet">
+  <link href="css/app.css" rel="stylesheet">
+</head>
+<body>
+  <a class="skip-link" href="#main">Saltar al contenido</a>
+
+  <!-- ============ LOGIN ============ -->
+  <div id="login" class="login" hidden>
+    <div class="login-tools">
+      <button type="button" class="btn btn-outline-secondary btn-icon" data-mode-toggle aria-label="Cambiar a modo oscuro"><i class="bi bi-moon-stars"></i></button>
+    </div>
+    <aside class="login-aside">
+      <div class="grid-lines" aria-hidden="true"></div>
+      <div class="d-flex align-items-center gap-3 position-relative">
+        <div class="sb-logo" data-school-initials>SJ</div>
+        <div class="sb-brand-text"><strong data-school-name>I.E.P. San José</strong><span>School HR · Gestión laboral docente</span></div>
+      </div>
+      <div class="position-relative my-5">
+        <p class="overline">Plataforma de gestión laboral</p>
+        <h1>Toda la información laboral docente, en un solo lugar.</h1>
+        <ul class="mod-list">
+          <li><b>01</b> Personal</li><li><b>02</b> Asistencia</li>
+          <li><b>03</b> Horarios</li><li><b>04</b> Contratos</li>
+          <li><b>05</b> Reemplazos</li><li><b>06</b> Planillas</li>
+          <li><b>07</b> Reportes</li><li><b>08</b> Auditoría</li>
+        </ul>
+      </div>
+      <p class="small mb-0 position-relative aside-foot">Estados accesibles: ✓ Puntual · ▲ Tardanza · ✕ Inasistencia · ◆ Justificada</p>
+    </aside>
+
+    <div class="login-form-wrap">
+      <form class="login-form" id="loginForm" novalidate>
+        <h2 class="h1 mb-2">Iniciar sesión</h2>
+        <p class="text-muted mb-4">Ingresa con tu documento de identidad.</p>
+
+        <div id="loginError" class="alert alert-sys-danger small py-2 px-3" role="alert" hidden>
+          <span class="a-ico">✕</span><span>DNI o contraseña incorrectos. Revisa los datos o solicita el restablecimiento a RR. HH.</span>
+        </div>
+
+        <div class="mb-3">
+          <label for="dni" class="form-label">DNI <span class="req" aria-hidden="true">*</span></label>
+          <input id="dni" class="form-control" inputmode="numeric" autocomplete="username" maxlength="8" placeholder="Ej. 45781234" aria-describedby="dniErr" required>
+          <div id="dniErr" class="invalid-feedback">Ingresa un DNI de 8 dígitos.</div>
+        </div>
+        <div class="mb-4">
+          <label for="pwd" class="form-label">Contraseña <span class="req" aria-hidden="true">*</span></label>
+          <div class="position-relative">
+            <input id="pwd" type="password" class="form-control pe-5" autocomplete="current-password" aria-describedby="pwdErr" required>
+            <button type="button" class="btn btn-ghost btn-icon btn-sm position-absolute top-50 end-0 translate-middle-y me-1" id="togglePwd" aria-label="Mostrar contraseña"><i class="bi bi-eye"></i></button>
+          </div>
+          <div id="pwdErr" class="invalid-feedback">Ingresa tu contraseña.</div>
+        </div>
+        <button class="btn btn-primary btn-lg w-100" type="submit" id="loginBtn">Ingresar</button>
+        <p class="small text-muted mt-3 mb-0">Demo: DNI <b class="tnum">45781234</b> (RR. HH.) o <b class="tnum">70112233</b> (Docente), cualquier contraseña.</p>
+
+        <div class="divider-text">o entra como</div>
+        <div class="demo-roles">
+          <button type="button" class="demo-role" data-demo="admin">
+            <span class="avatar">PR</span>
+            <span><strong>Patricia Ramos</strong><span>Jefa de RR. HH. · Administración</span></span>
+            <i class="bi bi-arrow-right ms-auto text-muted"></i>
+          </button>
+          <button type="button" class="demo-role" data-demo="docente">
+            <span class="avatar">MS</span>
+            <span><strong>Marco Salazar</strong><span>Docente de secundaria</span></span>
+            <i class="bi bi-arrow-right ms-auto text-muted"></i>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ============ APP ============ -->
+  <div id="app" class="app" hidden>
+    <aside class="app-sidebar" id="sidebar" aria-label="Navegación principal">
+      <div class="sb-brand">
+        <div class="sb-logo" data-school-initials>SJ</div>
+        <div class="sb-brand-text"><strong data-school-name>I.E.P. San José</strong><span id="sbRole">Administración</span></div>
+      </div>
+      <nav class="sb-nav" id="sbNav"></nav>
+      <div class="sb-footer">
+        <button class="sb-item sb-collapse-btn" id="collapseBtn" aria-expanded="true" aria-controls="sidebar" data-tip="Expandir menú (Ctrl+B)">
+          <i class="bi bi-chevron-double-left"></i><span class="sb-label">Plegar menú</span><kbd class="kbd sb-label">Ctrl B</kbd>
+        </button>
+      </div>
+    </aside>
+    <div class="sb-overlay" id="sbOverlay"></div>
+
+    <div class="app-main">
+      <header class="app-header">
+        <button class="btn btn-ghost btn-icon d-lg-none" id="menuBtn" aria-label="Abrir menú" aria-controls="sidebar" aria-expanded="false"><i class="bi bi-list"></i></button>
+        <button class="search-trigger d-none d-md-flex" id="searchBtn" aria-label="Buscar (Ctrl+K)">
+          <i class="bi bi-search"></i><span>Buscar docente, DNI, módulo…</span><kbd class="kbd">Ctrl K</kbd>
+        </button>
+        <button class="btn btn-ghost btn-icon d-md-none" id="searchBtnMobile" aria-label="Buscar"><i class="bi bi-search"></i></button>
+        <div class="header-actions">
+          <span class="net-status d-none d-sm-inline-flex" id="netStatus" role="status"><span class="net-dot"></span><span class="net-text">En línea</span></span>
+          <div class="dropdown">
+            <button class="btn btn-ghost btn-icon" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-label="Apariencia: tema y modo" id="appearanceBtn"><i class="bi bi-palette"></i></button>
+            <div class="dropdown-menu dropdown-menu-end appearance-menu" id="appearanceMenu"></div>
+          </div>
+          <div class="dropdown">
+            <button class="btn btn-ghost btn-icon position-relative" data-bs-toggle="dropdown" aria-label="Notificaciones, 3 nuevas"><i class="bi bi-bell"></i><span class="notif-dot" id="notifCount">3</span></button>
+            <div class="dropdown-menu dropdown-menu-end p-0" style="width:340px;max-width:92vw">
+              <div class="px-3 py-2 border-bottom d-flex justify-content-between align-items-center"><strong class="small">Notificaciones</strong><button class="btn btn-ghost btn-sm" id="markRead">Marcar como leídas</button></div>
+              <div id="notifList"></div>
+            </div>
+          </div>
+          <div class="dropdown">
+            <button class="user-chip" data-bs-toggle="dropdown" aria-label="Menú de usuario">
+              <span class="avatar" id="uAvatar">PR</span>
+              <span class="meta d-none d-sm-block"><strong id="uName">Patricia Ramos</strong><span id="uRole">RR. HH.</span></span>
+              <i class="bi bi-chevron-down small text-muted d-none d-sm-inline"></i>
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end">
+              <li><a class="dropdown-item" href="#/perfil"><i class="bi bi-person"></i> Mi perfil</a></li>
+              <li><a class="dropdown-item" href="#/apariencia"><i class="bi bi-palette"></i> Apariencia</a></li>
+              <li><button class="dropdown-item" id="switchRole"><i class="bi bi-arrow-repeat"></i> <span>Cambiar a vista Docente</span></button></li>
+              <li><hr class="dropdown-divider"></li>
+              <li><button class="dropdown-item" id="logout"><i class="bi bi-box-arrow-right"></i> Cerrar sesión</button></li>
+            </ul>
+          </div>
+        </div>
+      </header>
+      <div class="offline-banner" id="offlineBanner" role="status" hidden>
+        <span class="ico">▲</span><span><b>Sin conexión.</b> Tus marcaciones se guardarán en este dispositivo y se enviarán al reconectar.</span>
+      </div>
+      <main id="main" class="app-content" tabindex="-1"></main>
+    </div>
+  </div>
+
+  <!-- ============ Command menu ============ -->
+  <div class="modal fade cmdk" id="cmdk" tabindex="-1" aria-label="Búsqueda global">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="cmdk-input">
+          <i class="bi bi-search text-muted"></i>
+          <input id="cmdkInput" type="text" placeholder="Buscar docente, DNI, código, módulo…" autocomplete="off" role="combobox" aria-expanded="true" aria-controls="cmdkList" aria-autocomplete="list">
+          <kbd class="kbd">Esc</kbd>
+        </div>
+        <ul class="cmdk-list" id="cmdkList" role="listbox"></ul>
+        <div class="cmdk-foot"><span><kbd class="kbd">↑</kbd> <kbd class="kbd">↓</kbd> navegar</span><span><kbd class="kbd">Enter</kbd> abrir</span><span><kbd class="kbd">Esc</kbd> cerrar</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ Modal confirmación ============ -->
+  <div class="modal fade" id="confirmModal" tabindex="-1" aria-labelledby="confirmTitle">
+    <div class="modal-dialog modal-dialog-centered" style="max-width:440px">
+      <div class="modal-content">
+        <div class="modal-body p-4">
+          <div class="d-flex gap-3">
+            <div class="kpi-ico flex-shrink-0" style="background:var(--color-danger-soft);color:var(--color-danger-text);width:40px;height:40px" aria-hidden="true">✕</div>
+            <div>
+              <h2 class="modal-title mb-2" id="confirmTitle">¿Confirmar?</h2>
+              <p class="text-muted mb-3" id="confirmMsg"></p>
+              <p class="audit-note mb-0"><i class="bi bi-shield-lock"></i> Esta acción quedará registrada en auditoría.</p>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer border-0 pt-0 px-4 pb-4">
+          <button class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button class="btn btn-danger" id="confirmOk">Confirmar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ Modal formulario genérico ============ -->
+  <div class="modal fade" id="formModal" tabindex="-1" aria-labelledby="formTitle">
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable" style="max-width:560px">
+      <form class="modal-content" id="formModalForm" novalidate>
+        <div class="modal-header">
+          <h2 class="modal-title" id="formTitle">Formulario</h2>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        </div>
+        <div class="modal-body" id="formBody"></div>
+        <div class="modal-footer">
+          <span class="audit-note me-auto" id="formAudit"><i class="bi bi-shield-lock"></i> Quedará en auditoría</span>
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-primary" id="formSubmit">Guardar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ============ Drawer detalle ============ -->
+  <div class="offcanvas offcanvas-end sheet-mobile" tabindex="-1" id="drawer" aria-labelledby="drawerTitle">
+    <div class="offcanvas-header">
+      <h2 class="h3 mb-0" id="drawerTitle">Detalle</h2>
+      <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Cerrar"></button>
+    </div>
+    <div class="offcanvas-body" id="drawerBody"></div>
+  </div>
+
+  <div class="toast-container position-fixed bottom-0 end-0 p-4" id="toasts" aria-live="polite"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
