@@ -105,7 +105,7 @@
       </div>
       <nav class="sb-nav" id="sbNav"></nav>
       <div class="sb-footer">
-        <button class="sb-item sb-collapse-btn" id="collapseBtn" aria-expanded="true" aria-controls="sidebar" data-tip="Expandir menú (Ctrl+B)">
+        <button class="sb-item sb-collapse-btn" id="collapseBtn" aria-expanded="true" aria-controls="sidebar" aria-keyshortcuts="Control+B" data-tip="Expandir menú (Ctrl+B)">
           <i class="bi bi-chevron-double-left"></i><span class="sb-label">Plegar menú</span><kbd class="kbd sb-label">Ctrl B</kbd>
         </button>
       </div>
@@ -114,9 +114,9 @@
 
     <div class="app-main">
       <header class="app-header">
-        <button class="btn btn-ghost btn-icon d-lg-none" id="menuBtn" aria-label="Abrir menú" aria-controls="sidebar" aria-expanded="false"><i class="bi bi-list"></i></button>
-        <button class="search-trigger d-none d-md-flex" id="searchBtn" aria-label="Buscar (Ctrl+K)">
-          <i class="bi bi-search"></i><span>Buscar docente, DNI, módulo…</span><kbd class="kbd">Ctrl K</kbd>
+        <button class="btn btn-ghost menu-btn d-lg-none" id="menuBtn" aria-controls="sidebar" aria-expanded="false"><i class="bi bi-list" aria-hidden="true"></i><span>Menú</span></button>
+        <button class="search-trigger d-none d-md-flex" id="searchBtn" aria-keyshortcuts="Control+K">
+          <i class="bi bi-search" aria-hidden="true"></i><span>Buscar docente, DNI, módulo…</span><kbd class="kbd">Ctrl K</kbd>
         </button>
         <button class="btn btn-ghost btn-icon d-md-none" id="searchBtnMobile" aria-label="Buscar"><i class="bi bi-search"></i></button>
         <div class="header-actions">
@@ -126,17 +126,18 @@
             <div class="dropdown-menu dropdown-menu-end appearance-menu" id="appearanceMenu"></div>
           </div>
           <div class="dropdown">
-            <button class="btn btn-ghost btn-icon position-relative" data-bs-toggle="dropdown" aria-label="Notificaciones, 3 nuevas"><i class="bi bi-bell"></i><span class="notif-dot" id="notifCount">3</span></button>
+            <button class="btn btn-ghost btn-icon position-relative" data-bs-toggle="dropdown" aria-label="Notificaciones, 3 nuevas" id="notifBtn"><i class="bi bi-bell"></i><span class="notif-dot" id="notifCount">3</span></button>
             <div class="dropdown-menu dropdown-menu-end p-0" style="width:340px;max-width:92vw">
               <div class="px-3 py-2 border-bottom d-flex justify-content-between align-items-center"><strong class="small">Notificaciones</strong><button class="btn btn-ghost btn-sm" id="markRead">Marcar como leídas</button></div>
-              <div id="notifList"></div>
+              <nav id="notifList" class="notif-list" aria-label="Notificaciones"></nav>
             </div>
           </div>
           <div class="dropdown">
-            <button class="user-chip" data-bs-toggle="dropdown" aria-label="Menú de usuario">
-              <span class="avatar" id="uAvatar">PR</span>
+            <button class="user-chip" data-bs-toggle="dropdown">
+              <span class="avatar" id="uAvatar" aria-hidden="true">PR</span>
               <span class="meta d-none d-sm-block"><strong id="uName">Patricia Ramos</strong><span id="uRole">RR. HH.</span></span>
-              <i class="bi bi-chevron-down small text-muted d-none d-sm-inline"></i>
+              <span class="visually-hidden" id="uChipSr">: menú de usuario</span>
+              <i class="bi bi-chevron-down small text-muted d-none d-sm-inline" aria-hidden="true"></i>
             </button>
             <ul class="dropdown-menu dropdown-menu-end">
               <li><a class="dropdown-item" href="#/perfil"><i class="bi bi-person"></i> Mi perfil</a></li>
@@ -176,16 +177,18 @@
       <div class="modal-content">
         <div class="modal-body p-4">
           <div class="d-flex gap-3">
-            <div class="kpi-ico flex-shrink-0" style="background:var(--color-danger-soft);color:var(--color-danger-text);width:40px;height:40px" aria-hidden="true">✕</div>
+            <div class="kpi-ico flex-shrink-0" id="confirmIco" style="background:var(--color-danger-soft);color:var(--color-danger-text);width:40px;height:40px" aria-hidden="true">✕</div>
             <div>
               <h2 class="modal-title mb-2" id="confirmTitle">¿Confirmar?</h2>
               <p class="text-muted mb-3" id="confirmMsg"></p>
-              <p class="audit-note mb-0"><i class="bi bi-shield-lock"></i> Esta acción quedará registrada en auditoría.</p>
+              <ul class="confirm-list mb-3" id="confirmList" hidden></ul>
+              <p class="audit-note mb-0" id="confirmAudit"><i class="bi bi-shield-lock"></i> Esta acción quedará registrada en auditoría.</p>
             </div>
           </div>
         </div>
         <div class="modal-footer border-0 pt-0 px-4 pb-4">
-          <button class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button class="btn btn-outline-secondary" data-bs-dismiss="modal" id="confirmCancel">Cancelar</button>
+          <button class="btn btn-outline-danger" id="confirmAlt" hidden></button>
           <button class="btn btn-danger" id="confirmOk">Confirmar</button>
         </div>
       </div>
@@ -207,6 +210,26 @@
           <button type="submit" class="btn btn-primary" id="formSubmit">Guardar</button>
         </div>
       </form>
+    </div>
+  </div>
+
+  <!-- ============ Vista previa de documento (v2 · MV-07, MV-13) ============ -->
+  <div class="modal fade" id="docModal" tabindex="-1" aria-labelledby="docTitle">
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-lg">
+      <div class="modal-content">
+        <div class="modal-header">
+          <div class="min-w-0">
+            <h2 class="modal-title" id="docTitle">Documento</h2>
+            <p class="small text-muted mb-0" id="docSub"></p>
+          </div>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        </div>
+        <div class="modal-body doc-body" tabindex="0" role="region" aria-label="Documento y datos de la solicitud">
+          <div class="doc-viewer" id="docViewer"></div>
+          <dl class="doc-meta" id="docMeta"></dl>
+        </div>
+        <div class="modal-footer" id="docFooter"></div>
+      </div>
     </div>
   </div>
 
