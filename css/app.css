@@ -760,3 +760,35 @@ h2 .help-tip, legend .help-tip { font-weight: 400; }
   .class-block { border: 1px solid CanvasText; }
   .notif-unread, .net-dot { forced-color-adjust: none; }
 }
+
+/* ---------- Configuración de la institución (v2.1 · design_system §43) ---------- */
+.sb-logo.has-img { background: var(--color-surface); padding: 2px; overflow: hidden; box-shadow: inset 0 0 0 1px var(--sb-border); }
+.sb-logo-img { width: 100%; height: 100%; object-fit: contain; border-radius: 4px; }
+.cfg-nav { display: flex; flex-wrap: wrap; gap: var(--space-2); position: sticky; top: calc(var(--header-h) + var(--space-2)); z-index: 5; background: var(--color-bg); padding: var(--space-2) 0; }
+.cfg-nav a { font-size: var(--fs-small); font-weight: 600; padding: 6px 12px; border-radius: var(--radius-pill); border: 1px solid var(--color-border); background: var(--color-surface); color: var(--color-text); text-decoration: none; }
+.cfg-nav a:hover { border-color: var(--primary); color: var(--primary-text); }
+.cfg-sec { scroll-margin-top: calc(var(--header-h) + 64px); }
+.cfg-aside { position: sticky; top: calc(var(--header-h) + 64px); }
+.logo-up { display: flex; gap: var(--space-4); align-items: flex-start; padding: var(--space-4); border: 1px dashed var(--color-border-strong); border-radius: var(--radius-md); background: var(--color-surface-2); transition: border-color var(--motion-fast), background var(--motion-fast); }
+.logo-up.is-over { border-color: var(--primary); background: var(--primary-soft); }
+.logo-up-preview { width: 88px; height: 88px; flex-shrink: 0; border-radius: var(--radius-md); background: var(--color-surface); border: 1px solid var(--color-border); display: grid; place-items: center; overflow: hidden; }
+.logo-up-img { width: 100%; height: 100%; object-fit: contain; }
+.logo-up-img.is-initials, .pv-logo.is-initials, .pv-doc-logo.is-initials { display: grid; place-items: center; background: var(--primary); color: var(--on-primary); font-weight: 700; }
+.logo-up-img.is-initials { font-size: 1.5rem; }
+.nivel-box { border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: var(--space-3); height: 100%; }
+.pv-brand { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3); border: 1px solid var(--color-border); border-radius: var(--radius-md); }
+.pv-logo { width: 36px; height: 36px; border-radius: var(--radius-sm); object-fit: contain; flex-shrink: 0; font-size: .875rem; }
+.pv-doc { padding: var(--space-4); border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--doc-paper); color: var(--doc-ink); }
+.pv-doc .small, .pv-doc em { color: var(--doc-ink-2); }
+.pv-doc-logo { width: 48px; height: 48px; border-radius: var(--radius-sm); object-fit: contain; flex-shrink: 0; font-size: 1rem; }
+.doc-page .doc-emisor-logo { display: flex; align-items: center; gap: var(--space-3); text-transform: none; letter-spacing: normal; font-size: var(--fs-small); }
+.doc-emisor-logo img { width: 40px; height: 40px; object-fit: contain; }
+.doc-emisor-logo small { font-size: var(--fs-caption); }
+.save-bar { position: sticky; bottom: 0; z-index: 6; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); padding: var(--space-3) var(--space-4); margin-top: var(--space-2); background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-md); box-shadow: var(--shadow-2); }
+.save-bar .save-state { margin-right: auto; font-size: var(--fs-small); color: var(--color-text-muted); display: inline-flex; align-items: center; gap: 6px; }
+.save-bar.is-dirty { border-color: var(--color-warning-border); }
+.save-bar.is-dirty .save-state { color: var(--color-text); font-weight: 600; }
+.save-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--color-warning); }
+@media (max-width: 1199.98px) { .cfg-aside { position: static; } }
+@media (max-width: 575.98px) { .logo-up { flex-direction: column; } .save-bar .audit-note { display: none; } }
+@media (forced-colors: active) { .save-bar, .logo-up, .nivel-box, .pv-brand, .pv-doc { border: 1px solid CanvasText; } }

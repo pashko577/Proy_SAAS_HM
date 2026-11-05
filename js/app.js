@@ -206,7 +206,17 @@ const S = {
   groups: store.get('groups', {}),
   online: navigator.onLine,
   forceOffline: false,
-  school: store.get('school', { name: 'I.E.P. San José', color: '#B4532A', tol: 10 }),
+  school: (() => {
+    const def = { name: 'I.E.P. San José', short: 'I.E.P. San José', motto: 'Educar en valores', color: '#B4532A', tol: 10, logo: '',
+      ruc: '20481234567', razon: 'Asociación Educativa San José', gestion: 'Privada', ugel: 'UGEL 03 Breña',
+      dir: 'Av. Arequipa 1450', distrito: 'Lince', provincia: 'Lima', region: 'Lima', tel: '01 471 2345', email: 'contacto@sanjose.edu.pe', web: 'sanjose.edu.pe',
+      director: 'Lic. Ana María Quiroz Peña', rrhh: 'Patricia Ramos Aguilar',
+      niveles: { inicial: { on: false, cod: '' }, primaria: { on: true, cod: '0612345' }, secundaria: { on: true, cod: '0612352' } },
+      sedes: [{ n: 'Sede Central', dir: 'Av. Arequipa 1450, Lince' }, { n: 'Sede Norte', dir: 'Av. Túpac Amaru 820, Independencia' }],
+      anio: { ini: '2026-03-09', fin: '2026-12-18' } };
+    const st = store.get('school', {});
+    return { ...def, ...st, niveles: { ...def.niveles, ...(st.niveles || {}) }, anio: { ...def.anio, ...(st.anio || {}) }, sedes: st.sedes || def.sedes };
+  })(),
   look: { mode: store.get('mode', 'system'), theme: store.get('theme', 'bosque'), sidebar: store.get('sidebar', 'claro') },
   punch: { in: null, out: null, st: null, queued: false },
   simTime: 'now',
@@ -871,7 +881,7 @@ function personForm(p = null) {
         <div class="row g-3">
           <div class="col-sm-6">${field('fTipo', 'Tipo' + REQ, `<select id="fTipo" name="tipo" class="form-select" required><option ${!p || p.tipo === 'Docente' ? 'selected' : ''}>Docente</option><option ${p && p.tipo === 'Administrativo' ? 'selected' : ''}>Administrativo</option></select>`)}</div>
           <div class="col-sm-6">${field('fArea', 'Área' + REQ, `<select id="fArea" name="area" class="form-select" required aria-describedby="fAreaErr"><option value="">Selecciona…</option>${areas.map(a => `<option ${p && p.area === a ? 'selected' : ''}>${a}</option>`).join('')}</select>`, 'Selecciona un área.')}</div>
-          <div class="col-sm-6">${field('fSede', 'Sede' + REQ, `<select id="fSede" name="sede" class="form-select" required><option ${!p || p.sede === 'Sede Central' ? 'selected' : ''}>Sede Central</option><option ${p && p.sede === 'Sede Norte' ? 'selected' : ''}>Sede Norte</option></select>`)}</div>
+          <div class="col-sm-6">${field('fSede', 'Sede' + REQ, `<select id="fSede" name="sede" class="form-select" required>${sedeOptions(p ? p.sede : S.school.sedes[0]?.n)}</select>`)}</div>
           <div class="col-sm-6">${field('fBas', 'Remuneración básica (S/)' + REQ, `<input id="fBas" name="bas" type="number" min="1025" step="0.01" class="form-control" required value="${p ? p.basico : ''}" aria-describedby="fBasErr">`, 'Debe ser igual o mayor a la RMV (S/ 1 025.00).')}</div>
         </div>
       </fieldset>`,
@@ -921,7 +931,7 @@ V['#/asistencia/diario'] = () => {
       <div class="fb-item"><label class="form-label" for="dDate">Fecha</label><input id="dDate" type="date" class="form-control" value="${isoD(TODAY)}"></div>
       <div class="fb-item"><label class="form-label" for="dSt">Estado</label>
         <select id="dSt" class="form-select"><option value="">Todos</option>${Object.keys(ST).map(k => `<option value="${k}">${ST[k].ico} ${ST[k].txt}</option>`).join('')}</select></div>
-      <div class="fb-item"><label class="form-label" for="dSede">Sede</label><select id="dSede" class="form-select"><option value="">Todas</option><option>Sede Central</option><option>Sede Norte</option></select></div>
+      <div class="fb-item"><label class="form-label" for="dSede">Sede</label><select id="dSede" class="form-select"><option value="">Todas</option>${sedeOptions()}</select></div>
     </div>
     <div class="table-card">
       <div class="table-scroll"><table class="table table-stack">
@@ -1511,57 +1521,241 @@ V['#/auditoria'] = () => ({
   }
 });
 
-/* ---------- Configuración multi-colegio (§4.3, §40.3) ---------- */
+/* ---------- Configuración de la institución (§4.3, §40.3 · v2.1: datos institucionales completos) ---------- */
+const LOGO_TYPES = ['image/png', 'image/jpeg', 'image/svg+xml', 'image/webp'], LOGO_MAX = 1024 * 1024;
+const NIVELES = [['inicial', 'Inicial'], ['primaria', 'Primaria'], ['secundaria', 'Secundaria']];
+const schoolShort = () => S.school.short || S.school.name;
+const schoolInitials = () => initials(schoolShort().replace(/^I\.E\.P\.\s*|^I\.E\.\s*/i, '')) || 'IE';
+const logoHTML = (cls = '') => S.school.logo ? `<img src="${S.school.logo}" alt="" class="sb-logo-img ${cls}">` : esc(schoolInitials());
 function applySchool() {
-  $$('[data-school-name]').forEach(e => e.textContent = S.school.name);
-  $$('[data-school-initials]').forEach(e => e.textContent = initials(S.school.name.replace(/^I\.E\.P\.\s*/, '')) || 'SJ');
+  $$('[data-school-name]').forEach(e => e.textContent = schoolShort());
+  $$('[data-school-initials]').forEach(e => { e.innerHTML = logoHTML(); e.classList.toggle('has-img', !!S.school.logo); });
 }
-V['#/configuracion'] = () => ({
-  html: pageHeader({ crumbs: [['Inicio', '#/inicio'], ['Configuración']], title: 'Configuración de la institución', desc: 'Identidad y reglas de asistencia. El color del colegio genera el tema “Institucional”; los colores de estado nunca cambian.' }) + `
-    <div class="row g-4"><div class="col-lg-7"><form class="card" id="cfgForm" novalidate><div class="card-body">
-      <fieldset class="mb-4"><legend>Identidad</legend>
-        ${field('cName', 'Nombre de la institución' + REQ, `<input id="cName" name="name" class="form-control" required value="${esc(S.school.name)}" aria-describedby="cNameErr">`, 'Ingresa el nombre de la institución.')}
+const sedeOptions = (sel = '') => S.school.sedes.map(s => `<option ${s.n === sel ? 'selected' : ''}>${esc(s.n)}</option>`).join('');
+
+V['#/configuracion'] = () => {
+  const sc = S.school;
+  const nav = [['cfg-identidad', 'Identidad'], ['cfg-legal', 'Datos legales'], ['cfg-contacto', 'Contacto y autoridades'], ['cfg-niveles', 'Niveles y sedes'], ['cfg-asistencia', 'Asistencia']];
+  return {
+  html: pageHeader({ crumbs: [['Inicio', '#/inicio'], ['Configuración']], title: 'Configuración de la institución', desc: 'Datos oficiales del colegio. Se muestran en el menú, en la pantalla de ingreso, en las boletas y en los reportes.' }) + `
+    <nav class="cfg-nav mb-4" aria-label="Secciones de la configuración">${nav.map(n => `<a href="#${n[0]}" data-cfg-jump="${n[0]}">${n[1]}</a>`).join('')}</nav>
+    <div class="row g-4"><div class="col-xl-8">
+    <form id="cfgForm" novalidate>
+      <section class="card mb-4 cfg-sec" id="cfg-identidad" aria-labelledby="h-identidad"><div class="card-body">
+        <h2 class="h3 mb-3" id="h-identidad">Identidad</h2>
+        <div class="logo-up mb-4" id="logoDrop">
+          <div class="logo-up-preview" id="logoPrev" aria-hidden="true"></div>
+          <div class="flex-grow-1 min-w-0">
+            <label class="form-label" for="cLogo">Logo del colegio</label>
+            <input id="cLogo" type="file" class="form-control" accept=".png,.jpg,.jpeg,.svg,.webp" aria-describedby="cLogoHelp cLogoErr">
+            <div class="form-text" id="cLogoHelp">PNG, JPG, SVG o WEBP · máx. 1 MB · de preferencia cuadrado (256 × 256 px). También puedes arrastrarlo aquí.</div>
+            <div class="invalid-feedback" id="cLogoErr"></div>
+            <button type="button" class="btn btn-link btn-sm p-0 mt-1 text-danger-sys" id="cLogoDel" hidden>Quitar logo (se usarán las iniciales)</button>
+          </div>
+        </div>
+        <div class="row g-3">
+          <div class="col-md-8">${field('cName', 'Nombre oficial' + REQ, `<input id="cName" name="name" class="form-control" required maxlength="90" value="${esc(sc.name)}" aria-describedby="cNameErr">`, 'Ingresa el nombre oficial de la institución.')}</div>
+          <div class="col-md-4">${field('cShort', 'Nombre corto' + REQ, `<input id="cShort" name="short" class="form-control" required maxlength="24" value="${esc(sc.short)}" aria-describedby="cShortHelp cShortErr">`, 'Ingresa un nombre corto.', 'Se ve en el menú. Máx. 24 caracteres.')}</div>
+          <div class="col-12">${field('cMotto', 'Lema (opcional)', `<input id="cMotto" name="motto" class="form-control" maxlength="80" value="${esc(sc.motto)}">`)}</div>
+        </div>
         <label class="form-label" for="cColor">Color del colegio</label>
-        <div class="d-flex gap-3 align-items-center mb-2"><input id="cColor" name="color" type="color" class="form-control form-control-color" value="${S.school.color}" style="width:56px;height:40px"><code id="cHex" class="tnum">${S.school.color}</code></div>
-        <div id="cCheck" class="small" aria-live="polite"></div>
-      </fieldset>
-      <fieldset><legend>Reglas de asistencia ${helpTip('tol', '¿qué es la tolerancia?')}</legend>
+        <div class="d-flex gap-3 align-items-center mb-2"><input id="cColor" name="color" type="color" class="form-control form-control-color" value="${sc.color}" style="width:56px;height:40px"><code id="cHex" class="tnum">${sc.color}</code></div>
+        <div id="cCheck" class="small mb-2" aria-live="polite"></div>
+        <div class="form-check"><input class="form-check-input" type="checkbox" id="cUse" ${S.look.theme === 'institucional' ? 'checked' : ''}><label class="form-check-label" for="cUse">Usar el color del colegio como tema de la plataforma</label></div>
+      </div></section>
+
+      <section class="card mb-4 cfg-sec" id="cfg-legal" aria-labelledby="h-legal"><div class="card-body">
+        <h2 class="h3 mb-3" id="h-legal">Datos legales</h2>
+        <div class="row g-3">
+          <div class="col-md-5">${field('cRuc', 'RUC' + REQ, `<input id="cRuc" name="ruc" class="form-control tnum" inputmode="numeric" maxlength="11" required data-pattern="^(10|15|17|20)\\d{9}$" value="${esc(sc.ruc)}" aria-describedby="cRucHelp cRucErr">`, 'El RUC tiene 11 dígitos y empieza con 10, 15, 17 o 20.', 'Aparece en boletas y reportes.')}</div>
+          <div class="col-md-7">${field('cRazon', 'Razón social (opcional)', `<input id="cRazon" name="razon" class="form-control" maxlength="120" value="${esc(sc.razon)}" aria-describedby="cRazonHelp">`, '', 'Si es distinta del nombre oficial (p. ej., la asociación promotora).')}</div>
+          <div class="col-md-5">${field('cGestion', 'Tipo de gestión' + REQ, `<select id="cGestion" name="gestion" class="form-select" required>${['Privada', 'Pública', 'Pública de gestión privada (convenio)'].map(g => `<option ${sc.gestion === g ? 'selected' : ''}>${g}</option>`).join('')}</select>`)}</div>
+          <div class="col-md-7">${field('cUgel', 'UGEL / DRE' + REQ, `<input id="cUgel" name="ugel" class="form-control" required list="ugelList" value="${esc(sc.ugel)}" aria-describedby="cUgelHelp cUgelErr"><datalist id="ugelList">${['UGEL 01 San Juan de Miraflores', 'UGEL 02 Rímac', 'UGEL 03 Breña', 'UGEL 04 Comas', 'UGEL 05 San Juan de Lurigancho', 'UGEL 06 Ate', 'UGEL 07 San Borja'].map(u => `<option value="${u}">`).join('')}</datalist>`, 'Indica la UGEL o DRE a la que pertenece.', 'Elige de la lista o escribe la tuya.')}</div>
+        </div>
+      </div></section>
+
+      <section class="card mb-4 cfg-sec" id="cfg-contacto" aria-labelledby="h-contacto"><div class="card-body">
+        <h2 class="h3 mb-3" id="h-contacto">Contacto y autoridades</h2>
+        <div class="row g-3">
+          <div class="col-12">${field('cDir', 'Dirección' + REQ, `<input id="cDir" name="dir" class="form-control" required maxlength="120" value="${esc(sc.dir)}" aria-describedby="cDirErr">`, 'Ingresa la dirección de la sede principal.')}</div>
+          <div class="col-md-4">${field('cDist', 'Distrito' + REQ, `<input id="cDist" name="distrito" class="form-control" required value="${esc(sc.distrito)}" aria-describedby="cDistErr">`, 'Ingresa el distrito.')}</div>
+          <div class="col-md-4">${field('cProv', 'Provincia', `<input id="cProv" name="provincia" class="form-control" value="${esc(sc.provincia)}">`)}</div>
+          <div class="col-md-4">${field('cReg', 'Región', `<input id="cReg" name="region" class="form-control" value="${esc(sc.region)}">`)}</div>
+          <div class="col-md-4">${field('cTel', 'Teléfono', `<input id="cTel" name="tel" type="tel" class="form-control tnum" inputmode="tel" data-pattern="^([0-9 ()+-]{6,15})?$" value="${esc(sc.tel)}" aria-describedby="cTelErr">`, 'Usa solo números, espacios, + o guiones.')}</div>
+          <div class="col-md-4">${field('cMail', 'Correo institucional', `<input id="cMail" name="email" type="email" class="form-control" value="${esc(sc.email)}" aria-describedby="cMailErr">`, 'Escribe un correo válido (nombre@colegio.edu.pe).')}</div>
+          <div class="col-md-4">${field('cWeb', 'Sitio web', `<input id="cWeb" name="web" class="form-control" data-pattern="^(https?:\\/\\/)?([\\w-]+\\.)+[a-z]{2,}(\\/\\S*)?$|^$" value="${esc(sc.web)}" aria-describedby="cWebErr">`, 'Escribe una dirección web válida (colegio.edu.pe).')}</div>
+          <div class="col-md-6">${field('cDirector', 'Director(a)' + REQ, `<input id="cDirector" name="director" class="form-control" required value="${esc(sc.director)}" aria-describedby="cDirectorHelp cDirectorErr">`, 'Ingresa el nombre del director o directora.', 'Firma las constancias y reportes oficiales.')}</div>
+          <div class="col-md-6">${field('cRrhh', 'Responsable de RR. HH.' + REQ, `<input id="cRrhh" name="rrhh" class="form-control" required value="${esc(sc.rrhh)}" aria-describedby="cRrhhHelp cRrhhErr">`, 'Ingresa el nombre del responsable de RR. HH.', 'Firma las boletas de pago.')}</div>
+        </div>
+      </div></section>
+
+      <section class="card mb-4 cfg-sec" id="cfg-niveles" aria-labelledby="h-niveles"><div class="card-body">
+        <h2 class="h3 mb-1" id="h-niveles">Niveles y sedes</h2>
+        <p class="small text-muted mb-3">Cada nivel tiene su propio código modular (MINEDU).</p>
+        <fieldset class="mb-4"><legend class="form-label fw-semibold">Niveles que atiende ${REQ}</legend>
+          <div class="row g-3" id="cNiveles">${NIVELES.map(([k, l]) => `
+            <div class="col-md-4"><div class="nivel-box">
+              <div class="form-check mb-2"><input class="form-check-input" type="checkbox" id="nv-${k}" data-nivel="${k}" ${sc.niveles[k].on ? 'checked' : ''}><label class="form-check-label fw-semibold" for="nv-${k}">${l}</label></div>
+              <label class="form-label small" for="cm-${k}">Código modular</label>
+              <input id="cm-${k}" class="form-control form-control-sm tnum" inputmode="numeric" maxlength="7" data-pattern="^\\d{7}$" value="${esc(sc.niveles[k].cod)}" ${sc.niveles[k].on ? 'required' : 'disabled'} aria-describedby="cm-${k}Err">
+              <div class="invalid-feedback" id="cm-${k}Err">7 dígitos.</div>
+            </div></div>`).join('')}
+          </div>
+          <div class="invalid-feedback" id="cNivelesErr">Marca al menos un nivel.</div>
+        </fieldset>
+        <div class="d-flex align-items-center justify-content-between mb-2"><h3 class="h6 mb-0">Sedes</h3><button type="button" class="btn btn-outline-secondary btn-sm" id="sedeAdd"><i class="bi bi-plus-lg" aria-hidden="true"></i> Agregar sede</button></div>
+        <div class="table-card mb-4"><table class="table table-stack mb-0"><thead><tr><th scope="col">Sede</th><th scope="col">Dirección</th><th scope="col" class="num">Personal</th><th scope="col" class="text-end"><span class="visually-hidden">Acciones</span></th></tr></thead><tbody id="sedeBody"></tbody></table></div>
+        <div class="row g-3">
+          <div class="col-sm-6">${field('cIni', 'Inicio del año escolar' + REQ, `<input id="cIni" name="ini" type="date" class="form-control" required value="${sc.anio.ini}" aria-describedby="cIniErr">`, 'Indica la fecha de inicio.')}</div>
+          <div class="col-sm-6">${field('cFin', 'Fin del año escolar' + REQ, `<input id="cFin" name="fin" type="date" class="form-control" required value="${sc.anio.fin}" aria-describedby="cFinErr">`, 'Debe ser posterior al inicio.')}</div>
+        </div>
+      </div></section>
+
+      <section class="card mb-4 cfg-sec" id="cfg-asistencia" aria-labelledby="h-asistencia"><div class="card-body">
+        <h2 class="h3 mb-3" id="h-asistencia">Reglas de asistencia ${helpTip('tol', '¿qué es la tolerancia?')}</h2>
         <div class="row g-3"><div class="col-sm-6">${field('cIn', 'Hora de ingreso', `<input id="cIn" type="time" class="form-control" value="${SCHEDULE_START}" readonly aria-describedby="cInHelp">`, '', 'Se define por horario de cada docente.')}</div>
-        <div class="col-sm-6">${field('cTol', 'Tolerancia (minutos)' + REQ, `<input id="cTol" name="tol" type="number" min="0" max="30" class="form-control" required value="${S.school.tol}" aria-describedby="cTolErr cTolHelp">`, 'Ingresa un valor entre 0 y 30 minutos.', 'Minutos de gracia después de la hora de ingreso antes de contar tardanza.')}</div></div>
-      </fieldset>
-      <div class="form-check mt-2"><input class="form-check-input" type="checkbox" id="cUse" ${S.look.theme === 'institucional' ? 'checked' : ''}><label class="form-check-label" for="cUse">Usar el color del colegio como tema de la plataforma</label></div>
-      <div class="d-flex justify-content-end gap-2 mt-3"><span class="audit-note me-auto"><i class="bi bi-shield-lock"></i> Quedará en auditoría</span><button class="btn btn-primary" type="submit">Guardar configuración</button></div>
-    </div></form></div>
-    <div class="col-lg-5"><div class="card"><div class="card-body">
-      <h2 class="h3 mb-3">Escala generada</h2>
-      <div class="swatches mb-2" id="pvScale" aria-hidden="true"></div>
-      <div class="d-flex small text-muted tnum mb-4 text-center">${[50, 100, 200, 300, 500, 700, 800, 900].map(k => `<span class="flex-fill">${k}</span>`).join('')}</div>
-      <p class="small text-muted mb-2">Los estados no cambian con la marca:</p>
-      <div class="d-flex flex-wrap gap-2">${['puntual', 'tardanza', 'inasistencia', 'justificada', 'salida'].map(k => badge(k)).join('')}</div>
-    </div></div></div></div>`,
+        <div class="col-sm-6">${field('cTol', 'Tolerancia (minutos)' + REQ, `<input id="cTol" name="tol" type="number" min="0" max="30" class="form-control" required value="${sc.tol}" aria-describedby="cTolErr cTolHelp">`, 'Ingresa un valor entre 0 y 30 minutos.', 'Minutos de gracia después de la hora de ingreso antes de contar tardanza.')}</div></div>
+      </div></section>
+
+      <div class="save-bar" id="saveBar">
+        <span class="save-state" id="saveState" role="status" aria-live="polite">Sin cambios</span>
+        <span class="audit-note"><i class="bi bi-shield-lock" aria-hidden="true"></i> Quedará en auditoría</span>
+        <button type="button" class="btn btn-ghost" id="cfgReset" disabled>Descartar cambios</button>
+        <button class="btn btn-primary" type="submit">Guardar configuración</button>
+      </div>
+    </form></div>
+
+    <div class="col-xl-4"><div class="cfg-aside">
+      <div class="card mb-4"><div class="card-body">
+        <h2 class="h3 mb-1">Vista previa</h2>
+        <p class="small text-muted mb-3">Así se verá con los datos del formulario (aún sin guardar).</p>
+        <p class="overline mb-2">Menú lateral</p>
+        <div class="pv-brand mb-4" id="pvBrand"></div>
+        <p class="overline mb-2">Encabezado de boleta</p>
+        <div class="pv-doc" id="pvDoc"></div>
+      </div></div>
+      <div class="card"><div class="card-body">
+        <h2 class="h3 mb-3">Escala generada</h2>
+        <div class="swatches mb-2" id="pvScale" aria-hidden="true"></div>
+        <div class="d-flex small text-muted tnum mb-4 text-center">${[50, 100, 200, 300, 500, 700, 800, 900].map(k => `<span class="flex-fill">${k}</span>`).join('')}</div>
+        <p class="small text-muted mb-2">Los estados no cambian con la marca:</p>
+        <div class="d-flex flex-wrap gap-2">${['puntual', 'tardanza', 'inasistencia', 'justificada', 'salida'].map(k => badge(k)).join('')}</div>
+      </div></div>
+    </div></div></div>`,
   bind() {
+    const form = $('#cfgForm');
+    // Borrador: copia de trabajo; solo se aplica al guardar
+    const clone = o => JSON.parse(JSON.stringify(o));
+    let draft = clone(S.school); let saved = JSON.stringify(draft);
+    const dirty = () => JSON.stringify(draft) !== saved;
+    const read = () => {
+      Object.assign(draft, { name: $('#cName').value.trim(), short: $('#cShort').value.trim(), motto: $('#cMotto').value.trim(), color: $('#cColor').value.toUpperCase(),
+        ruc: $('#cRuc').value.trim(), razon: $('#cRazon').value.trim(), gestion: $('#cGestion').value, ugel: $('#cUgel').value.trim(),
+        dir: $('#cDir').value.trim(), distrito: $('#cDist').value.trim(), provincia: $('#cProv').value.trim(), region: $('#cReg').value.trim(),
+        tel: $('#cTel').value.trim(), email: $('#cMail').value.trim(), web: $('#cWeb').value.trim(), director: $('#cDirector').value.trim(), rrhh: $('#cRrhh').value.trim(),
+        anio: { ini: $('#cIni').value, fin: $('#cFin').value }, tol: +$('#cTol').value });
+      NIVELES.forEach(([k]) => { draft.niveles[k] = { on: $('#nv-' + k).checked, cod: $('#cm-' + k).value.trim() }; });
+    };
+    const logoBox = (logo, name, cls) => logo ? `<img src="${logo}" alt="" class="${cls}">` : `<span class="${cls} is-initials">${esc(initials((name || 'IE').replace(/^I\.E\.P\.\s*|^I\.E\.\s*/i, '')) || 'IE')}</span>`;
     const preview = () => {
-      const c = $('#cColor').value.toUpperCase();
+      const c = draft.color;
       $('#cHex').textContent = c;
       const { scale, adjusted } = generateScale(c);
       $('#pvScale').innerHTML = [50, 100, 200, 300, 500, 700, 800, 900].map(k => `<i style="background:${scale[k]}"></i>`).join('');
       $('#cCheck').innerHTML = adjusted
         ? `<span class="text-warning-sys fw-semibold">▲ ${c} tiene contraste ${contrast(c).toFixed(2)}:1 con blanco (mín. 4.5:1).</span> Para botones y enlaces se usará <b class="tnum">${scale[700]}</b> (${contrast(scale[700]).toFixed(2)}:1).`
         : `<span class="text-success-sys fw-semibold">✓ Contraste ${contrast(c).toFixed(2)}:1 con blanco.</span> Se usa tal cual en botones y enlaces.`;
+      $('#logoPrev').innerHTML = logoBox(draft.logo, draft.short || draft.name, 'logo-up-img');
+      $('#cLogoDel').hidden = !draft.logo;
+      $('#pvBrand').innerHTML = `${logoBox(draft.logo, draft.short || draft.name, 'pv-logo')}<div class="min-w-0"><strong class="d-block text-truncate">${esc(draft.short || draft.name || 'Nombre corto')}</strong><span class="small text-muted">Administración</span></div>`;
+      const niv = NIVELES.filter(([k]) => draft.niveles[k].on).map(([k, l]) => `${l}${draft.niveles[k].cod ? ' ' + esc(draft.niveles[k].cod) : ''}`).join(' · ');
+      $('#pvDoc').innerHTML = `<div class="d-flex gap-3 align-items-center">${logoBox(draft.logo, draft.short || draft.name, 'pv-doc-logo')}<div class="min-w-0">
+        <strong class="d-block">${esc(draft.name || 'Nombre oficial')}</strong>
+        ${draft.motto ? `<em class="d-block small">${esc(draft.motto)}</em>` : ''}
+        <span class="d-block small">RUC ${esc(draft.ruc || '—')} · ${esc(draft.ugel || 'UGEL')}</span>
+        <span class="d-block small">${esc([draft.dir, draft.distrito].filter(Boolean).join(', ') || 'Dirección')}</span>
+        ${niv ? `<span class="d-block small">Cód. modular: ${niv}</span>` : ''}</div></div>`;
+      $('#saveState').innerHTML = dirty() ? '<span class="save-dot" aria-hidden="true"></span> Tienes cambios sin guardar' : 'Sin cambios';
+      $('#saveBar').classList.toggle('is-dirty', dirty()); $('#cfgReset').disabled = !dirty();
     };
-    $('#cColor').oninput = preview; preview();
-    $('#cfgForm').onsubmit = e => {
-      e.preventDefault(); if (validateForm(e.target).length) return;
-      if (+$('#cTol').value < 0 || +$('#cTol').value > 30) { $('#cTol').classList.add('is-invalid'); $('#cTol').focus(); return; }
-      S.school = { name: $('#cName').value.trim(), color: $('#cColor').value.toUpperCase(), tol: +$('#cTol').value };
-      store.set('school', S.school); applySchool();
+    const drawSedes = () => {
+      $('#sedeBody').innerHTML = draft.sedes.map((s, i) => { const n = DB.people.filter(p => p.sede === (s.was || s.n)).length;   // si se renombró sin guardar, cuenta con el nombre anterior
+        return `<tr><td class="td-main" data-label="Sede"><strong>${esc(s.n)}</strong></td><td data-label="Dirección">${esc(s.dir || '—')}</td><td class="num" data-label="Personal">${n}</td>
+          <td class="text-end" data-label=""><div class="d-flex gap-1 justify-content-end"><button type="button" class="btn btn-ghost btn-sm" data-sede-edit="${i}" aria-label="Editar ${esc(s.n)}"><i class="bi bi-pencil" aria-hidden="true"></i></button>
+          <button type="button" class="btn btn-ghost btn-sm text-danger-sys" data-sede-del="${i}" ${n ? `disabled title="Tiene ${n} personas asignadas"` : ''} aria-label="Eliminar ${esc(s.n)}${n ? ` (no disponible: tiene ${n} personas asignadas)` : ''}"><i class="bi bi-trash" aria-hidden="true"></i></button></div></td></tr>`; }).join('');
+    };
+    const sedeForm = i => { const s = i == null ? { n: '', dir: '' } : draft.sedes[i];
+      openForm({ title: i == null ? 'Agregar sede' : `Editar · ${s.n}`, submit: i == null ? 'Agregar sede' : 'Guardar sede', auditNote: false, body: `
+        ${field('sN', 'Nombre de la sede' + REQ, `<input id="sN" name="n" class="form-control" required maxlength="40" value="${esc(s.n)}" aria-describedby="sNErr">`, 'Ingresa un nombre que no se repita con otra sede.')}
+        ${field('sD', 'Dirección', `<input id="sD" name="dir" class="form-control" maxlength="120" value="${esc(s.dir)}">`)}
+        ${i != null && DB.people.some(p => p.sede === (s.was || s.n)) ? '<p class="small text-muted mb-0"><i class="bi bi-info-circle" aria-hidden="true"></i> Si cambias el nombre, se actualizará en la ficha de todo el personal de esta sede al guardar la configuración.</p>' : ''}`,
+        onSubmit(d) {
+          const name = d.n.trim();
+          if (i == null) draft.sedes.push({ n: name, dir: d.dir.trim() }); else { draft.sedes[i] = { n: name, dir: d.dir.trim(), was: s.was || (s.n !== name ? s.n : undefined) }; }
+          drawSedes(); preview();
+        } });
+      // H5: el nombre no puede repetir el de otra sede; se marca en el campo antes de enviar
+      const sN = $('#sN'), dup = () => draft.sedes.some((x, j) => j !== i && x.n.trim().toLowerCase() === sN.value.trim().toLowerCase());
+      const chk = () => { sN.setCustomValidity(dup() ? 'repetida' : ''); $('#sNErr').textContent = dup() ? `Ya existe una sede llamada "${sN.value.trim()}".` : 'Ingresa un nombre que no se repita con otra sede.'; };
+      sN.addEventListener('input', () => { chk(); validateField(sN); }); chk(); };
+    const setLogoErr = msg => { const el = $('#cLogo'); el.classList.toggle('is-invalid', !!msg); el.setAttribute('aria-invalid', String(!!msg)); $('#cLogoErr').textContent = msg || ''; };
+    const takeFile = file => {
+      if (!file) return;
+      if (!LOGO_TYPES.includes(file.type)) { setLogoErr(`"${file.name}" no es una imagen válida. Usa PNG, JPG, SVG o WEBP.`); return; }
+      if (file.size > LOGO_MAX) { setLogoErr(`El archivo pesa ${(file.size / 1048576).toFixed(1)} MB. El máximo es 1 MB.`); return; }
+      setLogoErr('');
+      const r = new FileReader(); r.onload = () => { draft.logo = r.result; preview(); }; r.readAsDataURL(file);
+    };
+    $('#cLogo').onchange = e => takeFile(e.target.files[0]);
+    const drop = $('#logoDrop');
+    drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('is-over'); });
+    drop.addEventListener('dragleave', () => drop.classList.remove('is-over'));
+    drop.addEventListener('drop', e => { e.preventDefault(); drop.classList.remove('is-over'); takeFile(e.dataTransfer.files[0]); });
+    $('#cLogoDel').onclick = () => { draft.logo = ''; $('#cLogo').value = ''; setLogoErr(''); preview(); $('#cLogo').focus(); };
+    form.addEventListener('input', e => { read(); preview(); if (e.target.classList.contains('is-invalid')) validateField(e.target); if (e.target.id === 'cFin' || e.target.id === 'cIni') $('#cFin').classList.toggle('is-invalid', !!(draft.anio.ini && draft.anio.fin && draft.anio.fin <= draft.anio.ini)); });
+    form.addEventListener('change', e => {
+      const k = e.target.dataset.nivel;
+      if (k) { const cm = $('#cm-' + k); cm.disabled = !e.target.checked; cm.required = e.target.checked; if (!e.target.checked) { cm.classList.remove('is-invalid'); } else cm.focus();
+        $('#cNivelesErr').classList.toggle('d-block', !NIVELES.some(([n]) => $('#nv-' + n).checked)); }
+      read(); preview();
+    });
+    form.addEventListener('click', e => {
+      const ed = e.target.closest('[data-sede-edit]'); if (ed) sedeForm(+ed.dataset.sedeEdit);
+      const del = e.target.closest('[data-sede-del]');
+      if (del && !del.disabled) { const s = draft.sedes[+del.dataset.sedeDel];
+        confirmAction({ title: 'Eliminar sede', msg: `Se eliminará "${s.n}" de la lista de sedes al guardar la configuración. No tiene personal asignado.`, ok: 'Eliminar sede', audit: false,
+          onOk() { draft.sedes.splice(+del.dataset.sedeDel, 1); drawSedes(); preview(); } }); }
+    });
+    $('#sedeAdd').onclick = () => sedeForm(null);
+    $$('[data-cfg-jump]').forEach(a => a.onclick = e => { e.preventDefault(); const t = $('#' + a.dataset.cfgJump); t.scrollIntoView({ behavior: 'smooth', block: 'start' }); t.querySelector('h2').setAttribute('tabindex', '-1'); t.querySelector('h2').focus({ preventScroll: true }); });
+    $('#cfgReset').onclick = () => route();
+    form.onsubmit = e => {
+      e.preventDefault(); read();
+      const bad = validateForm(form);
+      const tol = $('#cTol'); if (+tol.value < 0 || +tol.value > 30) { tol.classList.add('is-invalid'); bad.push(tol); }
+      if (draft.anio.ini && draft.anio.fin && draft.anio.fin <= draft.anio.ini) { $('#cFin').classList.add('is-invalid'); bad.push($('#cFin')); }
+      const noLevel = !NIVELES.some(([k]) => draft.niveles[k].on); $('#cNivelesErr').classList.toggle('d-block', noLevel); if (noLevel) bad.push($('#nv-inicial'));
+      if (bad.length) {
+        $('#saveState').innerHTML = `<span class="text-danger-sys fw-semibold">✕ Revisa ${bad.length} ${bad.length === 1 ? 'campo' : 'campos'} marcado${bad.length === 1 ? '' : 's'}</span>`;
+        bad[0].scrollIntoView({ block: 'center' }); bad[0].focus({ preventScroll: true }); return;
+      }
+      // Cambios de nombre de sede → actualizar al personal
+      draft.sedes.forEach(s => { if (s.was) { DB.people.forEach(p => { if (p.sede === s.was) p.sede = s.n; }); delete s.was; } });
+      const changed = Object.keys(draft).filter(k => JSON.stringify(draft[k]) !== JSON.stringify(JSON.parse(saved)[k]));
+      S.school = clone(draft); saved = JSON.stringify(draft);
+      try { store.set('school', S.school); } catch { toast('warning', 'Logo no guardado en este equipo', 'La imagen es demasiado grande para el almacenamiento del navegador; se usará hasta cerrar la página.'); }
+      applySchool();
       if ($('#cUse').checked) setLook('theme', 'institucional', true); else if (S.look.theme === 'institucional') setLook('theme', 'bosque', true);
       renderAppearanceMenu();
-      audit('Modificó configuración', `Color ${S.school.color} · tolerancia ${S.school.tol} min`, true);
-      toast('success', 'Configuración guardada', $('#cUse').checked ? 'Se aplicó el tema Institucional en toda la plataforma.' : 'La identidad se actualizó.');
+      const LBL = { name: 'nombre', short: 'nombre corto', motto: 'lema', color: 'color', logo: 'logo', ruc: 'RUC', razon: 'razón social', gestion: 'gestión', ugel: 'UGEL', dir: 'dirección', distrito: 'distrito', provincia: 'provincia', region: 'región', tel: 'teléfono', email: 'correo', web: 'web', director: 'director(a)', rrhh: 'responsable RR. HH.', niveles: 'niveles', sedes: 'sedes', anio: 'año escolar', tol: 'tolerancia' };
+      audit('Modificó configuración', changed.length ? 'Cambió: ' + changed.map(k => LBL[k] || k).join(', ') : 'Sin cambios en los datos', true);
+      toast('success', 'Configuración guardada', changed.length ? `Se actualizó: ${changed.map(k => LBL[k] || k).join(', ')}.` : 'No había cambios en los datos.');
+      drawSedes(); preview();
     };
+    drawSedes(); preview();
   }
-});
+  };
+};
 
 /* ---------- Apariencia (§39–§41) ---------- */
 const MODES = [
@@ -1912,7 +2106,7 @@ V['#/mis-pagos'] = () => {
         openDoc({
           title: `Boleta de ${m}`, sub: `${me.n} · ${me.id}`, file, opener: `[data-bol="${i}"]`,
           viewer: `<figure class="doc-page boleta" role="img" aria-label="Boleta de pago de ${m}: neto ${money(neto)}">
-            <div class="doc-emisor">${esc(S.school.name)} · RUC 20481234567</div>
+            <div class="doc-emisor doc-emisor-logo">${S.school.logo ? `<img src="${S.school.logo}" alt="">` : ""}<span>${esc(S.school.name)} · RUC ${esc(S.school.ruc)}<br><small>${esc([S.school.dir, S.school.distrito].filter(Boolean).join(", "))} · ${esc(S.school.ugel)}</small></span></div>
             <div class="doc-titulo">Boleta de pago · ${m.charAt(0).toUpperCase() + m.slice(1)}</div>
             <p class="mb-3">Trabajador: <strong>${esc(me.n)}</strong> · DNI ${me.dni}<br>Cargo: Docente de ${esc(me.area)} · ${esc(me.sede)}</p>
             <table class="boleta-tabla"><thead><tr><th>Concepto</th><th class="num">Monto</th></tr></thead><tbody>
@@ -1921,7 +2115,7 @@ V['#/mis-pagos'] = () => {
               ${row('✕ Descuento por inasistencias', '− ' + money(p.falt))}
               ${row('AFP / ONP (13 %)', '− ' + money(p.afp))}
             </tbody><tfoot><tr><th>Neto pagado</th><th class="num tnum">${money(neto)}</th></tr></tfoot></table>
-            <div class="doc-firma">Recursos Humanos</div>
+            <div class="doc-firma">${esc(S.school.rrhh)}<br>Recursos Humanos</div>
           </figure>`,
           meta: [['Periodo', `${m.charAt(0).toUpperCase() + m.slice(1)}`], ['Estado', '<span class="status-badge status-badge--puntual"><span class="sb-ico" aria-hidden="true">✓</span>Pagado</span>'], ['Neto', `<strong class="tnum">${money(neto)}</strong>`], ['Formato', 'Documento PDF']]
         });
