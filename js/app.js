@@ -21,6 +21,8 @@ const initials = n => n.split(' ').filter(Boolean).slice(0, 2).map(w => w[0]).jo
 const TODAY = new Date();
 const fmtDateLong = d => d.toLocaleDateString('es-PE', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 const fmtDate = d => pad(d.getDate()) + '/' + pad(d.getMonth() + 1) + '/' + d.getFullYear();
+/* Fecha local AAAA-MM-DD para inputs date (toISOString usa UTC y de noche daba el día siguiente) · v2 */
+const isoD = d => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
 const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
 
 /* ---------- Estados (§18) ---------- */
@@ -34,6 +36,18 @@ const ST = {
 };
 const badge = (st, extra = '', solid = false) =>
   `<span class="status-badge status-badge--${st}${solid ? ' solid' : ''}"><span class="sb-ico" aria-hidden="true">${ST[st].ico}</span>${ST[st].txt}${extra ? ' · ' + esc(extra) : ''}</span>`;
+
+/* Estados de una solicitud de justificación (§18.1) — mismos badges en Admin y Docente */
+const JST = {
+  pendiente: { cls: 'pendiente',    ico: '○', txt: 'Pendiente de revisión' },
+  aprobada:  { cls: 'justificada',  ico: '◆', txt: 'Aprobada' },
+  rechazada: { cls: 'inasistencia', ico: '✕', txt: 'Rechazada' }
+};
+const justifBadge = estado => { const s = JST[estado];
+  return `<span class="status-badge status-badge--${s.cls}"><span class="sb-ico" aria-hidden="true">${s.ico}</span>${s.txt}</span>`; };
+/* Tipo de registro que se justifica → estado de asistencia */
+const JTIPO = { tardanza: 'Tardanza', inasistencia: 'Inasistencia', salida: 'Salida anticipada' };
+const tipoBadge = tipo => badge(Object.keys(JTIPO).find(k => JTIPO[k] === tipo) || 'inasistencia');
 
 /* ---------- Datos simulados ---------- */
 const PEOPLE = [
@@ -72,7 +86,11 @@ const DB = {
   justifs: [
     { id: 'J-118', n: 'Ana Gutiérrez León', fecha: fmtDate(TODAY), tipo: 'Inasistencia', motivo: 'Cita médica (EsSalud)', adj: 'constancia_cita.pdf', estado: 'pendiente' },
     { id: 'J-117', n: 'Jorge Huamán Ríos', fecha: fmtDate(TODAY), tipo: 'Tardanza', motivo: 'Paro de transporte en Av. Arequipa', adj: '', estado: 'pendiente' },
-    { id: 'J-115', n: 'Lucía Vargas Soto', fecha: fmtDate(addDays(TODAY, -2)), tipo: 'Tardanza', motivo: 'Trámite en UGEL', adj: 'cargo_ugel.jpg', estado: 'aprobada' }
+    { id: 'J-115', n: 'Lucía Vargas Soto', fecha: fmtDate(addDays(TODAY, -2)), tipo: 'Tardanza', motivo: 'Trámite en UGEL', adj: 'cargo_ugel.jpg', estado: 'aprobada' },
+    { id: 'J-116', n: 'Diego Ramírez Cruz', fecha: fmtDate(addDays(TODAY, -6)), tipo: 'Inasistencia', motivo: 'Duelo por familiar directo', adj: 'acta_defuncion.pdf', estado: 'aprobada' },
+    { id: 'J-113', n: 'Rosa Chávez Paredes', fecha: fmtDate(addDays(TODAY, -9)), tipo: 'Tardanza', motivo: 'Tráfico en la Panamericana', adj: '', estado: 'rechazada' },
+    { id: 'J-112', n: 'Carmen Flores Díaz', fecha: fmtDate(addDays(TODAY, -12)), tipo: 'Inasistencia', motivo: 'Descanso médico de 1 día', adj: 'certificado_medico.pdf', estado: 'aprobada' },
+    { id: 'J-109', n: 'Marco Salazar Núñez', fecha: fmtDate(addDays(TODAY, -45)), tipo: 'Tardanza', motivo: 'Transporte / fuerza mayor', adj: '', estado: 'aprobada' }
   ],
   audit: [
     ['Patricia Ramos', addDays(TODAY, 0), '09:12', 'Aprobó justificación', 'J-116 · Silvia Rojas Campos', true],
@@ -90,6 +108,9 @@ DB.people.forEach((p, i) => {
   DB.contracts.push({ id: 'C-02' + String(i + 1).padStart(2, '0'), pid: p.id, n: p.n, tipo: tipos[i % 3], ini, fin: addDays(TODAY, fin), anulado: false });
 });
 const findPerson = n => DB.people.find(p => p.n === n);
+/* Búsqueda de personas: parcial, sin mayúsculas ni tildes, por nombre, DNI o código (Personal, Historial · MV-05) */
+const norm = s => String(s ?? '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
+const matchPerson = (p, q) => { q = norm(q); return !q || norm(p.n).includes(q) || p.dni.includes(q) || norm(p.id).includes(q); };
 const contractState = c => {
   if (c.anulado) return { k: 'anulado', ico: '✕', txt: 'Anulado', cls: 'status-badge--pendiente' };
   const d = Math.round((c.fin - TODAY) / 864e5);
@@ -97,6 +118,8 @@ const contractState = c => {
   if (d <= 30) return { k: 'porvencer', ico: '▲', txt: `Vence en ${d} días`, cls: 'status-badge--tardanza' };
   return { k: 'vigente', ico: '✓', txt: 'Vigente', cls: 'status-badge--puntual' };
 };
+/* MV-06 · P04: badge de contrato = calendario + glifo de atención (▲ / ✕ / ✓) + texto, forma rectangular */
+const contractBadge = (c, extra = "") => { const s = contractState(c); return `<span class="status-badge is-contract ${s.cls}${extra}"><i class="bi bi-calendar3 sb-cal" aria-hidden="true"></i><span class="sb-ico" aria-hidden="true">${s.ico}</span>${s.txt}</span>`; };
 const lateMin = p => p.in ? Math.max(0, toMin(p.in) - toMin(SCHEDULE_START) - 0) : 0;
 const SCHEDULE_START = '07:45';
 const SCHEDULE_END = '14:30';
@@ -183,12 +206,23 @@ const S = {
   groups: store.get('groups', {}),
   online: navigator.onLine,
   forceOffline: false,
-  school: store.get('school', { name: 'I.E.P. San José', color: '#B4532A', tol: 10 }),
+  school: (() => {
+    const def = { name: 'I.E.P. San José', short: 'I.E.P. San José', motto: 'Educar en valores', color: '#B4532A', tol: 10, logo: '',
+      ruc: '20481234567', razon: 'Asociación Educativa San José', gestion: 'Privada', ugel: 'UGEL 03 Breña',
+      dir: 'Av. Arequipa 1450', distrito: 'Lince', provincia: 'Lima', region: 'Lima', tel: '01 471 2345', email: 'contacto@sanjose.edu.pe', web: 'sanjose.edu.pe',
+      director: 'Lic. Ana María Quiroz Peña', rrhh: 'Patricia Ramos Aguilar',
+      niveles: { inicial: { on: false, cod: '' }, primaria: { on: true, cod: '0612345' }, secundaria: { on: true, cod: '0612352' } },
+      sedes: [{ n: 'Sede Central', dir: 'Av. Arequipa 1450, Lince' }, { n: 'Sede Norte', dir: 'Av. Túpac Amaru 820, Independencia' }],
+      anio: { ini: '2026-03-09', fin: '2026-12-18' } };
+    const st = store.get('school', {});
+    return { ...def, ...st, niveles: { ...def.niveles, ...(st.niveles || {}) }, anio: { ...def.anio, ...(st.anio || {}) }, sedes: st.sedes || def.sedes };
+  })(),
   look: { mode: store.get('mode', 'system'), theme: store.get('theme', 'bosque'), sidebar: store.get('sidebar', 'claro') },
   punch: { in: null, out: null, st: null, queued: false },
   simTime: 'now',
   sort: { key: 'n', dir: 1 },
-  filters: { q: '', area: '', contrato: '' }
+  filters: { q: '', area: '', contrato: '' },
+  sel: {}
 };
 const USERS = {
   admin:   { role: 'admin', name: 'Patricia Ramos', short: 'RR. HH.', roleLabel: 'Administración / RR. HH.', dni: '45781234' },
@@ -249,8 +283,9 @@ function renderNav() {
     const col = bootstrap.Collapse.getOrCreateInstance(el, { toggle: false });
     el.addEventListener('show.bs.collapse', () => { btn.setAttribute('aria-expanded', 'true'); S.groups[id] = true; store.set('groups', S.groups); });
     el.addEventListener('hide.bs.collapse', () => { btn.setAttribute('aria-expanded', 'false'); S.groups[id] = false; store.set('groups', S.groups); });
-    btn.addEventListener('click', () => {
-      if (S.collapsed && isDesktop()) { location.hash = $('a', el).getAttribute('href'); return; }
+    btn.addEventListener('click', e => {
+      // MV-02: en modo íconos el clic abre el submenú flotante (antes saltaba directo al primer submódulo)
+      if (isCompact()) { if (flyBtn === btn && e.detail === 0) closeFlyout(); else openFlyout(btn, e.detail === 0); return; }
       col.toggle();
     });
   });
@@ -259,7 +294,7 @@ function markActiveNav() {
   const h = location.hash;
   $$('#sbNav .active').forEach(e => e.classList.remove('active'));
   $$('#sbNav [aria-current]').forEach(e => e.removeAttribute('aria-current'));
-  const link = $$('#sbNav a').find(a => h === a.getAttribute('href'));
+  const link = $$('#sbNav a').filter(a => !a.closest('#sbFlyout')).find(a => h === a.getAttribute('href'));
   if (!link) return;
   link.classList.add('active'); link.setAttribute('aria-current', 'page');
   const sub = link.closest('.sb-sub');
@@ -272,11 +307,43 @@ function markActiveNav() {
 
 /* ---------- Sidebar plegable (§11) ---------- */
 const isDesktop = () => window.matchMedia('(min-width: 992px)').matches;
+const isRail = () => window.matchMedia('(min-width: 768px) and (max-width: 991.98px)').matches;
+/* Menú en modo íconos: plegado por el usuario en escritorio, o riel en 768–991 px sin desplegar */
+const isCompact = () => (S.collapsed && isDesktop()) || (isRail() && !$('#app').classList.contains('sb-open'));
+
+/* ---------- Submenú flotante (MV-02 · §11.1) ---------- */
+let flyBtn = null, flyTimer = null;
+function openFlyout(btn, focusFirst = false) {
+  clearTimeout(flyTimer);
+  const item = NAV[S.user.role].find(i => i.id === btn.dataset.group);
+  let fly = $('#sbFlyout');
+  if (!fly) { fly = document.createElement('div'); fly.id = 'sbFlyout'; fly.className = 'sb-flyout'; fly.hidden = true; }
+  if (flyBtn && flyBtn !== btn) flyBtn.setAttribute('aria-expanded', 'false');
+  fly.innerHTML = `<p class="sb-fly-title" id="flyTitle">${item.label}</p>
+    <ul aria-labelledby="flyTitle">${item.children.map(c => `<li><a href="${c.href}"${location.hash === c.href ? ' class="active" aria-current="page"' : ''}>${c.label}</a></li>`).join('')}</ul>`;
+  btn.after(fly); // justo después del botón: el orden de tabulación sigue siendo natural
+  const r = btn.getBoundingClientRect();
+  fly.hidden = false;
+  fly.style.left = (r.right + 8) + 'px';
+  fly.style.top = Math.min(r.top, window.innerHeight - fly.offsetHeight - 8) + 'px';
+  flyBtn = btn; btn.setAttribute('aria-expanded', 'true');
+  const tip = $('.sb-tip'); if (tip) tip.hidden = true;
+  if (focusFirst) $('a', fly).focus();
+}
+function closeFlyout(returnFocus = false) {
+  clearTimeout(flyTimer);
+  const fly = $('#sbFlyout');
+  if (!fly || fly.hidden) return;
+  fly.hidden = true;
+  if (flyBtn) { flyBtn.setAttribute('aria-expanded', 'false'); if (returnFocus) flyBtn.focus(); }
+  flyBtn = null;
+}
 function applyCollapsed() {
   $('#app').classList.toggle('sb-collapsed', S.collapsed);
   const b = $('#collapseBtn');
   b.setAttribute('aria-expanded', String(!S.collapsed));
-  b.setAttribute('aria-label', S.collapsed ? 'Expandir menú' : 'Plegar menú');
+  // AC-03: desplegado, el nombre sale del texto visible ("Plegar menú Ctrl B"); plegado no hay texto visible
+  if (S.collapsed) b.setAttribute('aria-label', 'Expandir menú'); else b.removeAttribute('aria-label');
 }
 function toggleCollapsed() { S.collapsed = !S.collapsed; store.set('collapsed', S.collapsed); applyCollapsed(); }
 function setMobileOpen(open) {
@@ -344,10 +411,28 @@ function audit(action, detail, sensitive = false) {
 }
 
 /* ---------- Confirmación / formularios ---------- */
-function confirmAction({ title, msg, ok = 'Confirmar', onOk }) {
+/* tone: 'danger' (destructiva, por defecto) | estado de asistencia ('salida', 'tardanza'…) para advertencias (§19.6)
+   list: elementos afectados (texto) · alt: { label, run } acción secundaria destructiva (§19.6, MV-04) */
+function confirmAction({ title, msg, ok = 'Confirmar', cancel = 'Cancelar', onOk, tone = 'danger', audit = true, list = null, alt = null }) {
+  $('#confirmCancel').textContent = cancel;   // MV-11: evita "Cancelar" junto a "Cancelar asignación"
   $('#confirmTitle').textContent = title;
   $('#confirmMsg').textContent = msg;
+  const ul = $('#confirmList');
+  ul.hidden = !list; ul.innerHTML = list ? list.map(t => `<li>${esc(t)}</li>`).join('') : '';
+  $('#confirmModal .modal-dialog').style.maxWidth = list || alt ? '600px' : '440px';
+  const altBtn = $('#confirmAlt');
+  altBtn.hidden = !alt;
+  if (alt) {
+    altBtn.textContent = alt.label;
+    altBtn.onclick = () => { $('#confirmModal').addEventListener('hidden.bs.modal', () => alt.run(), { once: true }); bootstrap.Modal.getInstance('#confirmModal').hide(); };
+  }
+  const sem = tone === 'danger' ? 'danger' : ({ salida: 'early', tardanza: 'warning' }[tone] || 'warning');
+  const ico = $('#confirmIco');
+  ico.textContent = tone === 'danger' ? '✕' : (ST[tone]?.ico || '▲');
+  ico.style.background = `var(--color-${sem}-soft)`; ico.style.color = `var(--color-${sem}-text)`;
+  $('#confirmAudit').hidden = !audit;
   const btn = $('#confirmOk');
+  btn.className = 'btn ' + (tone === 'danger' ? 'btn-danger' : 'btn-primary');
   btn.textContent = ok;
   const m = bootstrap.Modal.getOrCreateInstance('#confirmModal');
   btn.onclick = () => { m.hide(); onOk(); };
@@ -404,6 +489,75 @@ const pageHeader = ({ crumbs, title, desc, actions = '' }) => `
     <div><h1 tabindex="-1">${title}</h1>${desc ? `<p>${desc}</p>` : ''}</div>
     ${actions ? `<div class="page-actions">${actions}</div>` : ''}
   </div>`;
+/* ---------- Ayuda contextual "?" (v2 · MV-10 ← P10 · design_system §19.9) ----------
+   Patrón disclosure: botón con aria-expanded + panel .help-pop flotante (position:fixed, no se recorta).
+   Abre con clic, Enter/Espacio o pasando el puntero; Esc o clic fuera lo cierran y el foco queda en el botón. */
+const HELP = {
+  tol: () => {
+    const lim = hhmm(new Date(0, 0, 0, 7, 45 + S.school.tol)), late = hhmm(new Date(0, 0, 0, 7, 46 + S.school.tol));
+    return { t: 'Tolerancia', b: `Minutos de gracia después de la hora de ingreso. Con ingreso ${SCHEDULE_START} y ${S.school.tol} min de tolerancia: hasta las <strong>${lim}</strong> es <strong>✓ Puntual</strong>; desde las ${late} es <strong>▲ Tardanza</strong>.`,
+      link: S.user?.role === 'admin' && location.hash !== '#/configuracion' ? ['Cambiar en Configuración', '#/configuracion'] : null };
+  },
+  desc: () => ({ t: 'Cómo se calculan los descuentos', b: `<ul class="mb-0 ps-3"><li><strong>▲ Tardanza:</strong> ${money(DESC_TARD)} por cada una.</li><li><strong>✕ Inasistencia:</strong> 1/30 de la remuneración básica (un día).</li><li><strong>◆ Justificada:</strong> no descuenta.</li></ul><p class="mb-0 mt-2">El monto es estimado hasta el cierre de planilla. Una justificación aprobada antes del cierre anula el descuento.</p>`,
+    link: S.user?.role === 'docente' ? ['Solicitar una justificación', '#/mi-asistencia'] : null })
+};
+const helpTip = (k, label) => `<button type="button" class="help-tip" data-help="${k}" aria-expanded="false" aria-label="Ayuda: ${label}"><i class="bi bi-question-lg" aria-hidden="true"></i></button>`;
+let helpOpen = null;
+function closeHelp(returnFocus = false) {
+  if (!helpOpen) return;
+  const { btn, pop } = helpOpen; helpOpen = null;
+  btn.setAttribute('aria-expanded', 'false'); pop.remove();
+  if (returnFocus) btn.focus();
+}
+function openHelp(btn, byHover = false) {
+  if (helpOpen?.btn === btn) return;
+  closeHelp();
+  const h = HELP[btn.dataset.help](); const id = 'help-' + btn.dataset.help;
+  const pop = document.createElement('div');
+  pop.className = 'help-pop'; pop.id = id; pop.setAttribute('role', 'note');
+  pop.innerHTML = `<strong class="d-block mb-1">${h.t}</strong><div>${h.b}</div>${h.link ? `<a class="help-link" href="${h.link[1]}">${h.link[0]} →</a>` : ''}`;
+  btn.after(pop); btn.setAttribute('aria-expanded', 'true'); btn.setAttribute('aria-controls', id);
+  helpOpen = { btn, pop, byHover }; placeHelp();
+}
+/* Coloca el panel junto al botón; si el botón sale de la pantalla al desplazarse, se cierra */
+function placeHelp() {
+  if (!helpOpen) return;
+  const { btn, pop } = helpOpen, r = btn.getBoundingClientRect(), w = Math.min(320, innerWidth - 16);
+  if (r.bottom < 0 || r.top > innerHeight) return closeHelp();
+  pop.style.width = w + 'px';
+  pop.style.left = Math.max(8, Math.min(r.left + r.width / 2 - 24, innerWidth - w - 8)) + 'px';
+  const below = r.bottom + 8, ph = pop.offsetHeight;
+  pop.style.top = (below + ph > innerHeight - 8 && r.top - ph - 8 > 8 ? r.top - ph - 8 : below) + 'px';
+}
+function initHelp() {
+  document.addEventListener('click', e => {
+    const b = e.target.closest('.help-tip');
+    if (b) { e.preventDefault(); e.stopPropagation(); if (helpOpen?.btn === b && !helpOpen.byHover) closeHelp(); else { closeHelp(); openHelp(b); } return; }
+    if (helpOpen && !e.target.closest('.help-pop')) closeHelp();
+    if (e.target.closest('.help-link')) closeHelp();
+  });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && helpOpen) { e.stopPropagation(); closeHelp(true); } }, true);
+  document.addEventListener('mouseover', e => { const b = e.target.closest('.help-tip'); if (b && !helpOpen) openHelp(b, true); });
+  document.addEventListener('mouseout', e => {
+    if (!helpOpen?.byHover) return;
+    const to = e.relatedTarget;
+    if (to && (to.closest('.help-pop') || to.closest('.help-tip') === helpOpen.btn)) return;
+    if (e.target.closest('.help-tip, .help-pop')) closeHelp();
+  });
+  document.addEventListener('focusout', e => { if (helpOpen && e.relatedTarget && !e.relatedTarget.closest('.help-pop, .help-tip')) closeHelp(); });
+  addEventListener('resize', placeHelp); addEventListener('scroll', placeHelp, true);
+  addEventListener('hashchange', () => closeHelp());
+}
+/* Descarga CSV real (separador ; y BOM UTF-8 para que Excel muestre bien las tildes) · MV-09, N03, N04 */
+function downloadCSV(name, header, rows, what) {
+  const cell = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
+  const blob = new Blob(['\ufeff' + [header, ...rows].map(l => l.map(cell).join(';')).join('\r\n')], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  toast('success', 'Archivo exportado', `${name} · ${what}.`);
+}
+const stampToday = () => isoD(TODAY);
+const attendanceRows = list => list.map(p => [p.id, p.n, p.dni, p.tipo, p.area, p.sede, p.in || '', p.out || '', ST[p.st]?.txt || p.st, p.st === 'tardanza' ? lateMin(p) : '']);
+const ATT_HEADER = ['Código', 'Nombre', 'DNI', 'Tipo', 'Área', 'Sede', 'Entrada', 'Salida', 'Estado', 'Minutos de tardanza'];
 const emptyState = (ico, title, msg, action = '') => `
   <div class="empty-state"><div class="es-ico"><i class="bi bi-${ico}" aria-hidden="true"></i></div>
     <h3>${title}</h3><p>${msg}</p>${action}</div>`;
@@ -445,8 +599,8 @@ function adminHome() {
     html: pageHeader({
       crumbs: [['Inicio']],
       title: `${greet}, Patricia`,
-      desc: `Resumen de la jornada del ${fmtDateLong(TODAY)}. Hora de ingreso programada ${SCHEDULE_START} · tolerancia ${S.school.tol} min.`,
-      actions: `<a class="btn btn-outline-secondary" href="#/reportes"><i class="bi bi-download"></i> Exportar día</a><a class="btn btn-primary" href="#/asistencia/diario"><i class="bi bi-clock-history"></i> Ver registro diario</a>`
+      desc: `Resumen de la jornada del ${fmtDateLong(TODAY)}. Hora de ingreso programada ${SCHEDULE_START} · tolerancia ${S.school.tol} min ${helpTip('tol', '¿qué es la tolerancia?')}`,
+      actions: `<button class="btn btn-outline-secondary" id="expDay"><i class="bi bi-download" aria-hidden="true"></i> Exportar día</button><a class="btn btn-primary" href="#/asistencia/diario"><i class="bi bi-clock-history"></i> Ver registro diario</a>`
     }) + `
     <div class="row g-3 mb-4">
       <div class="col-6 col-xl-3">${kpi({ label: 'Presentes', value: presentes, sub: `/ ${docentes.length}`, ico: '✓', tone: 'success', context: `${Math.round(presentes / docentes.length * 100)} % del personal docente`,
@@ -510,6 +664,7 @@ function adminHome() {
       </div>
     </div>`,
     bind() {
+      $('#expDay').onclick = () => downloadCSV(`asistencia_${stampToday()}.csv`, ATT_HEADER, attendanceRows(DB.people), `${DB.people.length} registros del día`);   // N04
       const draw = f => {
         const rows = docentes.filter(p => !f || p.st === f || (f === 'inasistencia' && p.st === 'justificada'));
         $('#dayBody').innerHTML = rows.map(p => `<tr>
@@ -538,7 +693,7 @@ function personList(tipo) {
     html: pageHeader({
       crumbs: [['Inicio', '#/inicio'], ['Personal', '#/personal/docentes'], [title]],
       title, desc: isDoc ? 'Información laboral, contratos y asistencia del personal docente.' : 'Personal administrativo de la institución.',
-      actions: `<button class="btn btn-outline-secondary"><i class="bi bi-download"></i> Exportar</button><button class="btn btn-primary" data-action="new-person"><i class="bi bi-person-plus"></i> Nuevo ${isDoc ? 'docente' : 'administrativo'}</button>`
+      actions: `<button class="btn btn-outline-secondary" id="plExport"><i class="bi bi-download" aria-hidden="true"></i> Exportar lista</button><button class="btn btn-primary" data-action="new-person"><i class="bi bi-person-plus"></i> Nuevo ${isDoc ? 'docente' : 'administrativo'}</button>`
     }) + `
     <div class="filter-bar" role="search">
       <div class="grow"><label class="form-label" for="fq">Buscar</label>
@@ -550,10 +705,18 @@ function personList(tipo) {
     </div>
     <div class="active-filters" id="chips"></div>
     <div class="table-card">
+      <div class="bulk-bar" id="bulkBar" role="region" aria-label="Acciones para la selección" hidden>
+        <span class="bulk-count" id="bulkCount" aria-live="polite"></span>
+        <div class="bulk-actions">
+          <button class="btn btn-sm btn-outline-secondary" data-bulk="export"><i class="bi bi-filetype-csv" aria-hidden="true"></i> Exportar selección</button>
+          <button class="btn btn-sm btn-outline-secondary" data-bulk="notify"><i class="bi bi-send" aria-hidden="true"></i> Enviar comunicado</button>
+          <button class="btn btn-sm btn-ghost" data-bulk="clear"><i class="bi bi-x-lg" aria-hidden="true"></i> Limpiar selección</button>
+        </div>
+      </div>
       <div class="table-scroll">
         <table class="table table-stack">
           <thead><tr>
-            <th scope="col" class="td-select" style="width:44px"><input class="form-check-input" type="checkbox" id="selAll" aria-label="Seleccionar todos"></th>
+            <th scope="col" class="td-select" style="width:44px"><input class="form-check-input" type="checkbox" id="selAll" aria-label="Seleccionar todos los visibles"></th>
             <th scope="col" aria-sort="${S.sort.key === 'n' ? (S.sort.dir > 0 ? 'ascending' : 'descending') : 'none'}"><button class="th-sort" data-sort="n">Nombre <i class="bi bi-arrow-${S.sort.key === 'n' && S.sort.dir < 0 ? 'up' : 'down'}"></i></button></th>
             <th scope="col">DNI</th>
             <th scope="col" aria-sort="${S.sort.key === 'sede' ? (S.sort.dir > 0 ? 'ascending' : 'descending') : 'none'}"><button class="th-sort" data-sort="sede">Sede <i class="bi bi-arrow-${S.sort.key === 'sede' && S.sort.dir < 0 ? 'up' : 'down'}"></i></button></th>
@@ -570,21 +733,34 @@ function personList(tipo) {
       </div>
     </div>`,
     bind() {
+      /* MV-09 · P06: la selección se guarda por id y sobrevive a filtros y orden; la barra aparece con ≥ 1 fila */
+      const sel = S.sel[tipo] = S.sel[tipo] || new Set(); let visible = [];
+      const plural = n => `${n} ${tipo === 'Docente' ? (n === 1 ? 'docente' : 'docentes') : (n === 1 ? 'persona' : 'personas')}`;
+      const syncSel = () => {
+        const vis = visible.filter(p => sel.has(p.id)).length, hidden = sel.size - vis;
+        const all = $('#selAll'); all.checked = visible.length > 0 && vis === visible.length; all.indeterminate = vis > 0 && vis < visible.length;
+        $('#bulkBar').hidden = !sel.size;
+        $('#bulkCount').innerHTML = sel.size ? `<strong>${sel.size}</strong> ${sel.size === 1 ? 'seleccionado' : 'seleccionados'}${hidden ? ` <span class="text-muted">· ${hidden} oculto${hidden > 1 ? 's' : ''} por los filtros</span>` : ''}` : '';
+      };
+      const csv = (list, name) => downloadCSV(name, ['Código', 'Nombre', 'DNI', 'Área', 'Sede', 'Contrato', 'Estado hoy'],
+        list.map(p => { const k = DB.contracts.find(x => x.pid === p.id); return [p.id, p.n, p.dni, p.area, p.sede, k ? contractState(k).txt : '', ST[p.st]?.txt || p.st]; }), plural(list.length));
+      const stamp = fmtDate(TODAY).split('/').reverse().join('-');
       const draw = () => {
-        const q = S.filters.q.trim().toLowerCase();
         let rows = DB.people.filter(p => p.tipo === tipo)
-          .filter(p => !q || p.n.toLowerCase().includes(q) || p.dni.includes(q) || p.id.toLowerCase().includes(q))
+          .filter(p => matchPerson(p, S.filters.q))
           .filter(p => !S.filters.area || p.area === S.filters.area)
           .filter(p => { if (!S.filters.contrato) return true; const k = DB.contracts.find(c => c.pid === p.id); return contractState(k).k === S.filters.contrato; });
         rows.sort((a, b) => a[S.sort.key].localeCompare(b[S.sort.key]) * S.sort.dir);
+        visible = rows;
         $('#plBody').innerHTML = rows.map(p => {
-          const k = DB.contracts.find(c => c.pid === p.id); const cs = contractState(k);
-          return `<tr data-id="${p.id}">
-            <td class="td-select"><input class="form-check-input row-sel" type="checkbox" aria-label="Seleccionar ${esc(p.n)}"></td>
+          const k = DB.contracts.find(c => c.pid === p.id);
+          const on = sel.has(p.id);
+          return `<tr data-id="${p.id}"${on ? ' class="selected"' : ''}>
+            <td class="td-select"><input class="form-check-input row-sel" type="checkbox" value="${p.id}" aria-label="Seleccionar ${esc(p.n)}"${on ? ' checked' : ''}></td>
             <td class="td-main" data-label="Nombre"><a href="#" class="text-reset text-decoration-none" data-open="${p.id}">${personCell(p)}</a></td>
             <td data-label="DNI" class="tnum">${p.dni}</td>
             <td data-label="Sede">${esc(p.sede)}</td>
-            <td data-label="Contrato"><span class="status-badge ${cs.cls}"><span class="sb-ico" aria-hidden="true">${cs.ico}</span>${cs.txt}</span></td>
+            <td data-label="Contrato">${contractBadge(k)}</td>
             <td data-label="Hoy">${badge(p.st)}</td>
             <td class="td-actions text-end">
               <div class="dropdown"><button class="btn btn-ghost btn-icon btn-sm" data-bs-toggle="dropdown" data-bs-popper-config='{"strategy":"fixed"}' aria-label="Acciones para ${esc(p.n)}"><i class="bi bi-three-dots"></i></button>
@@ -604,6 +780,7 @@ function personList(tipo) {
         if (S.filters.contrato) chips.push(['contrato', `Contrato: ${S.filters.contrato === 'vigente' ? 'Vigente' : 'Por vencer'}`]);
         $('#chips').innerHTML = chips.map(c => `<span class="chip">${esc(c[1])}<button aria-label="Quitar filtro ${esc(c[1])}" data-rm="${c[0]}"><i class="bi bi-x"></i></button></span>`).join('')
           + (chips.length ? '<button class="btn btn-ghost btn-sm" data-clear>Limpiar filtros</button>' : '');
+        syncSel();
       };
       $('#fcon').value = S.filters.contrato;
       $('#fq').oninput = e => { S.filters.q = e.target.value; draw(); };
@@ -618,8 +795,21 @@ function personList(tipo) {
         if (e.target.closest('[data-clear]')) { S.filters = { q: '', area: '', contrato: '' }; $('#fq').value = ''; $('#farea').value = ''; $('#fcon').value = ''; draw(); }
       });
       $('#main').addEventListener('change', e => {
-        if (e.target.id === 'selAll') $$('.row-sel').forEach(c => { c.checked = e.target.checked; c.closest('tr').classList.toggle('selected', c.checked); });
-        if (e.target.classList.contains('row-sel')) e.target.closest('tr').classList.toggle('selected', e.target.checked);
+        if (e.target.id === 'selAll') $$('.row-sel').forEach(c => { c.checked = e.target.checked; sel[c.checked ? 'add' : 'delete'](c.value); c.closest('tr').classList.toggle('selected', c.checked); });
+        if (e.target.classList.contains('row-sel')) { sel[e.target.checked ? 'add' : 'delete'](e.target.value); e.target.closest('tr').classList.toggle('selected', e.target.checked); }
+        if (e.target.id === 'selAll' || e.target.classList.contains('row-sel')) syncSel();
+      });
+      $('#plExport').onclick = () => csv(visible, `personal_${tipo === 'Docente' ? 'docentes' : 'administrativos'}_${stamp}.csv`);
+      $('#bulkBar').addEventListener('click', e => {
+        const b = e.target.closest('[data-bulk]'); if (!b) return;
+        const list = DB.people.filter(p => sel.has(p.id));
+        if (b.dataset.bulk === 'export') csv(list, `seleccion_${list.length}_${stamp}.csv`);
+        if (b.dataset.bulk === 'notify') openForm({ title: `Enviar comunicado · ${plural(list.length)}`, submit: 'Enviar comunicado',
+          body: `<p class="small text-muted mb-3">Para: ${list.slice(0, 3).map(p => esc(p.n.split(' ').slice(0, 2).join(' '))).join(', ')}${list.length > 3 ? ` y ${list.length - 3} más` : ''}</p>
+            ${field('bnAsunto', 'Asunto' + REQ, '<input id="bnAsunto" name="asunto" class="form-control" required maxlength="80" aria-describedby="bnAsuntoErr">', 'Escribe un asunto.')}
+            ${field('bnMsg', 'Mensaje' + REQ, '<textarea id="bnMsg" name="msg" class="form-control" rows="4" required aria-describedby="bnMsgErr"></textarea>', 'Escribe el mensaje.')}`,
+          onSubmit(d) { audit('Envió comunicado', `${d.asunto} · ${plural(list.length)}`); toast('success', 'Comunicado enviado', `"${d.asunto}" llegará a ${plural(list.length)} por correo y en su panel.`); } });
+        if (b.dataset.bulk === 'clear') { sel.clear(); draw(); $('#selAll').focus(); }
       });
       draw();
     }
@@ -630,7 +820,7 @@ V['#/personal/administrativos'] = () => personList('Administrativo');
 
 function openPerson(id) {
   const p = DB.people.find(x => x.id === id);
-  const k = DB.contracts.find(c => c.pid === id); const cs = contractState(k);
+  const k = DB.contracts.find(c => c.pid === id);
   $('#drawerTitle').textContent = 'Ficha del personal';
   $('#drawerBody').innerHTML = `
     <div class="d-flex gap-3 align-items-center mb-4">
@@ -651,7 +841,7 @@ function openPerson(id) {
           <dt>Teléfono</dt><dd class="tnum">${p.tel}</dd>
           <dt>Sede</dt><dd>${esc(p.sede)}</dd>
           <dt>Fecha de ingreso</dt><dd class="tnum">${p.ingreso}</dd>
-          <dt>Contrato</dt><dd>${k.id} · ${k.tipo}<br><span class="status-badge ${cs.cls} mt-1"><span class="sb-ico" aria-hidden="true">${cs.ico}</span>${cs.txt}</span></dd>
+          <dt>Contrato</dt><dd>${k.id} · ${k.tipo}<br>${contractBadge(k, " mt-1")}</dd>
           <dt>Remuneración</dt><dd class="tnum">${money(p.basico)}</dd>
         </dl>
       </div>
@@ -659,7 +849,7 @@ function openPerson(id) {
         <ul class="list-plain">${historyFor(p, 7).map(r => `<li class="row-line"><span class="tnum small">${r.fecha}</span><span class="tnum small text-muted">${r.in || '—'}</span>${badge(r.st)}</li>`).join('')}</ul>
       </div>
       <div class="tab-pane fade" id="tab-hist" role="tabpanel">
-        <ul class="list-plain">${DB.audit.filter(a => a[4].includes(p.n) || a[4].includes(p.id)).map(a => `<li class="row-line"><div><strong class="small d-block">${a[3]}</strong><span class="small text-muted">${a[0]} · ${fmtDate(a[1])} ${a[2]}</span></div>${a[5] ? '<i class="bi bi-shield-lock text-muted" title="Acción sensible"></i>' : ''}</li>`).join('') || '<p class="text-muted small">Sin acciones registradas para esta persona.</p>'}</ul>
+        <ul class="list-plain">${DB.audit.filter(a => a[4].includes(p.n) || a[4].includes(p.id)).map(a => `<li class="row-line"><div><strong class="small d-block">${a[3]}</strong><span class="small text-muted">${a[0]} · ${fmtDate(a[1])} ${a[2]}</span></div>${a[5] ? '<span title="Acción sensible"><i class="bi bi-shield-lock text-muted" aria-hidden="true"></i><span class="visually-hidden">Acción sensible</span></span>' : ''}</li>`).join('') || '<p class="text-muted small">Sin acciones registradas para esta persona.</p>'}</ul>
       </div>
     </div>
     <div class="d-flex gap-2 mt-4 pt-3 border-top">
@@ -691,7 +881,7 @@ function personForm(p = null) {
         <div class="row g-3">
           <div class="col-sm-6">${field('fTipo', 'Tipo' + REQ, `<select id="fTipo" name="tipo" class="form-select" required><option ${!p || p.tipo === 'Docente' ? 'selected' : ''}>Docente</option><option ${p && p.tipo === 'Administrativo' ? 'selected' : ''}>Administrativo</option></select>`)}</div>
           <div class="col-sm-6">${field('fArea', 'Área' + REQ, `<select id="fArea" name="area" class="form-select" required aria-describedby="fAreaErr"><option value="">Selecciona…</option>${areas.map(a => `<option ${p && p.area === a ? 'selected' : ''}>${a}</option>`).join('')}</select>`, 'Selecciona un área.')}</div>
-          <div class="col-sm-6">${field('fSede', 'Sede' + REQ, `<select id="fSede" name="sede" class="form-select" required><option ${!p || p.sede === 'Sede Central' ? 'selected' : ''}>Sede Central</option><option ${p && p.sede === 'Sede Norte' ? 'selected' : ''}>Sede Norte</option></select>`)}</div>
+          <div class="col-sm-6">${field('fSede', 'Sede' + REQ, `<select id="fSede" name="sede" class="form-select" required>${sedeOptions(p ? p.sede : S.school.sedes[0]?.n)}</select>`)}</div>
           <div class="col-sm-6">${field('fBas', 'Remuneración básica (S/)' + REQ, `<input id="fBas" name="bas" type="number" min="1025" step="0.01" class="form-control" required value="${p ? p.basico : ''}" aria-describedby="fBasErr">`, 'Debe ser igual o mayor a la RMV (S/ 1 025.00).')}</div>
         </div>
       </fieldset>`,
@@ -734,14 +924,14 @@ V['#/asistencia/diario'] = () => {
     html: pageHeader({
       crumbs: [['Inicio', '#/inicio'], ['Asistencia', '#/asistencia/diario'], ['Registro diario']],
       title: 'Registro diario',
-      desc: `El estado se calcula automáticamente: ingreso programado ${SCHEDULE_START} + tolerancia de ${S.school.tol} min.`,
-      actions: `<button class="btn btn-outline-secondary"><i class="bi bi-download"></i> Exportar</button>`
+      desc: `El estado se calcula automáticamente: ingreso programado ${SCHEDULE_START} + tolerancia de ${S.school.tol} min ${helpTip('tol', '¿qué es la tolerancia?')}`,
+      actions: `<button class="btn btn-outline-secondary" id="adExport"><i class="bi bi-download" aria-hidden="true"></i> Exportar</button>`
     }) + `
     <div class="filter-bar">
-      <div class="fb-item"><label class="form-label" for="dDate">Fecha</label><input id="dDate" type="date" class="form-control" value="${TODAY.toISOString().slice(0, 10)}"></div>
+      <div class="fb-item"><label class="form-label" for="dDate">Fecha</label><input id="dDate" type="date" class="form-control" value="${isoD(TODAY)}"></div>
       <div class="fb-item"><label class="form-label" for="dSt">Estado</label>
         <select id="dSt" class="form-select"><option value="">Todos</option>${Object.keys(ST).map(k => `<option value="${k}">${ST[k].ico} ${ST[k].txt}</option>`).join('')}</select></div>
-      <div class="fb-item"><label class="form-label" for="dSede">Sede</label><select id="dSede" class="form-select"><option value="">Todas</option><option>Sede Central</option><option>Sede Norte</option></select></div>
+      <div class="fb-item"><label class="form-label" for="dSede">Sede</label><select id="dSede" class="form-select"><option value="">Todas</option>${sedeOptions()}</select></div>
     </div>
     <div class="table-card">
       <div class="table-scroll"><table class="table table-stack">
@@ -751,26 +941,33 @@ V['#/asistencia/diario'] = () => {
       <div class="table-footer"><span id="adCount"></span><span class="audit-note"><i class="bi bi-shield-lock"></i> Las correcciones manuales quedan en auditoría</span></div>
     </div>`,
     bind() {
+      /* MV-11 · M-09: desde una inasistencia se llega directo a sus clases sin reemplazo (sin mover el módulo) */
+      let visibleAd = [];
+      const pendOf = p => DB.replacements.filter(r => r.estado === 'pendiente' && r.ausente === p.n);
+      const replLink = p => { const n = pendOf(p).length; return n ? `<a class="repl-link" href="#/reemplazos" data-goto-repl="${pendOf(p)[0].id}"><i class="bi bi-arrow-left-right" aria-hidden="true"></i> ${n} ${n === 1 ? 'clase' : 'clases'} sin reemplazo · Asignar</a>` : ''; };
       const draw = () => {
         const st = $('#dSt').value, sede = $('#dSede').value;
-        const rows = list.filter(p => (!st || p.st === st) && (!sede || p.sede === sede));
+        const rows = list.filter(p => (!st || p.st === st) && (!sede || p.sede === sede)); visibleAd = rows;
         $('#adBody').innerHTML = rows.map(p => `<tr>
           <td class="td-main" data-label="Personal">${personCell(p)}</td>
           <td data-label="Sede">${esc(p.sede)}</td>
           <td data-label="Entrada" class="num">${p.in || '—'}</td>
           <td data-label="Salida" class="num">${p.out || '—'}</td>
-          <td data-label="Estado">${badge(p.st, p.st === 'tardanza' ? `${lateMin(p)} min` : '')}</td>
+          <td data-label="Estado">${badge(p.st, p.st === 'tardanza' ? `${lateMin(p)} min` : '')}${replLink(p)}</td>
           <td class="td-actions text-end"><div class="dropdown"><button class="btn btn-ghost btn-icon btn-sm" data-bs-toggle="dropdown" data-bs-popper-config='{"strategy":"fixed"}' aria-label="Acciones para ${esc(p.n)}"><i class="bi bi-three-dots"></i></button>
             <ul class="dropdown-menu dropdown-menu-end">
               ${['tardanza', 'inasistencia'].includes(p.st) ? `<li><button class="dropdown-item" data-justify="${p.id}"><i class="bi bi-patch-check"></i> Registrar justificación</button></li>` : ''}
+              ${pendOf(p).length ? `<li><a class="dropdown-item" href="#/reemplazos" data-goto-repl="${pendOf(p)[0].id}"><i class="bi bi-arrow-left-right"></i> Asignar reemplazo</a></li>` : ''}
               <li><button class="dropdown-item" data-open="${p.id}"><i class="bi bi-person-vcard"></i> Ver ficha</button></li>
             </ul></div></td></tr>`).join('');
         $('#adCount').textContent = `Mostrando ${rows.length} de ${list.length}`;
         $('#adEmpty').innerHTML = rows.length ? '' : emptyState('funnel', 'Sin registros con ese estado', 'Prueba con otro estado o sede.', '<button class="btn btn-outline-secondary" data-clear>Limpiar filtros</button>');
       };
       ['#dSt', '#dSede'].forEach(s => $(s).onchange = draw);
+      $('#adExport').onclick = () => downloadCSV(`registro_diario_${stampToday()}${$('#dSt').value ? '_' + $('#dSt').value : ''}.csv`, ATT_HEADER, attendanceRows(visibleAd), `${visibleAd.length} registros (filtros aplicados)`);   // N03
       $('#dDate').onchange = () => toast('info', 'Vista de ejemplo', 'En el prototipo solo hay datos de la jornada actual.');
       $('#main').addEventListener('click', e => {
+        const g = e.target.closest('[data-goto-repl]'); if (g) S.flash = '#rc-' + g.dataset.gotoRepl;
         const j = e.target.closest('[data-justify]'); if (j) justifyForm(DB.people.find(p => p.id === j.dataset.justify), draw);
         const o = e.target.closest('[data-open]'); if (o) openPerson(o.dataset.open);
         if (e.target.closest('[data-clear]')) { $('#dSt').value = ''; $('#dSede').value = ''; draw(); }
@@ -798,75 +995,257 @@ function justifyForm(p, after) {
   });
 }
 
+/* MV-05 (M-03): buscador de docente (combobox ARIA) + 5 periodos */
 V['#/asistencia/historial'] = () => {
   const doc = DB.people.filter(p => p.tipo === 'Docente');
+  const iso = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const first = new Date(TODAY.getFullYear(), TODAY.getMonth(), 1);
+  const prevFirst = new Date(TODAY.getFullYear(), TODAY.getMonth() - 1, 1);
+  const POOL_DAYS = 70; // ~3 meses de registros simulados
+  const minDate = historyFor(doc[0], POOL_DAYS).at(-1).d;
   return {
     html: pageHeader({
       crumbs: [['Inicio', '#/inicio'], ['Asistencia', '#/asistencia/diario'], ['Historial']],
-      title: 'Historial de asistencia', desc: 'Consulta registros anteriores por docente y periodo.'
+      title: 'Historial de asistencia', desc: 'Busca a un docente por nombre o DNI y elige el periodo que quieres revisar.'
     }) + `
-    <div class="filter-bar">
-      <div class="grow"><label class="form-label" for="hDoc">Docente</label><select id="hDoc" class="form-select">${doc.map(p => `<option value="${p.id}">${esc(p.n)}</option>`).join('')}</select></div>
-      <div class="fb-item"><label class="form-label" for="hPer">Periodo</label><select id="hPer" class="form-select"><option value="10">Últimos 10 días hábiles</option><option value="20">Últimos 20 días hábiles</option></select></div>
+    <div class="filter-bar" role="search">
+      <div class="grow combo">
+        <label class="form-label" for="hQ">Docente</label>
+        <div class="input-icon"><i class="bi bi-search" aria-hidden="true"></i>
+          <input id="hQ" class="form-control" type="text" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="hList" autocomplete="off" placeholder="Escribe un nombre o DNI" value="${esc(doc[0].n)}" aria-describedby="hQHelp"></div>
+        <ul id="hList" class="combo-list" role="listbox" aria-label="Docentes" hidden></ul>
+        <span class="visually-hidden" id="hQHelp">Escribe para filtrar. Usa las flechas para recorrer las sugerencias y Enter para elegir.</span>
+        <span class="visually-hidden" role="status" id="hQStatus"></span>
+      </div>
+      <div class="fb-item fb-item-wide"><label class="form-label" for="hPer">Periodo</label>
+        <select id="hPer" class="form-select">
+          <option value="d10">Últimos 10 días hábiles</option><option value="d20">Últimos 20 días hábiles</option>
+          <option value="mes">Este mes</option><option value="mesAnt">Mes anterior</option><option value="custom">Personalizado…</option>
+        </select></div>
+      <div class="fb-item" id="hRange" hidden>
+        <div class="d-flex gap-2">
+          <div><label class="form-label" for="hDesde">Desde</label><input id="hDesde" type="date" class="form-control" min="${iso(minDate)}" max="${iso(addDays(TODAY, -1))}" value="${iso(prevFirst)}"></div>
+          <div><label class="form-label" for="hHasta">Hasta</label><input id="hHasta" type="date" class="form-control" min="${iso(minDate)}" max="${iso(addDays(TODAY, -1))}" value="${iso(addDays(TODAY, -1))}"></div>
+        </div></div>
     </div>
     <div class="row g-4">
       <div class="col-lg-8"><div class="table-card"><div class="table-scroll"><table class="table table-stack">
         <thead><tr><th scope="col">Fecha</th><th scope="col" class="num">Entrada</th><th scope="col" class="num">Salida</th><th scope="col">Estado</th></tr></thead>
-        <tbody id="hBody"></tbody></table></div></div></div>
+        <tbody id="hBody"></tbody></table></div><div id="hEmpty"></div></div></div>
       <div class="col-lg-4"><div class="card"><div class="card-body" id="hSum"></div></div></div>
     </div>`,
     bind() {
+      let sel = doc[0], opts = [], active = -1;
+      const q = $('#hQ'), list = $('#hList');
+      const rowsFor = p => {
+        const pool = historyFor(p, POOL_DAYS), per = $('#hPer').value;
+        if (per === 'd10') return pool.slice(0, 10);
+        if (per === 'd20') return pool.slice(0, 20);
+        let from, to;
+        if (per === 'mes') { from = first; to = TODAY; }
+        else if (per === 'mesAnt') { from = prevFirst; to = addDays(first, -1); }
+        else { from = new Date($('#hDesde').value + 'T00:00'); to = new Date($('#hHasta').value + 'T23:59'); }
+        return pool.filter(r => r.d >= from && r.d <= to);
+      };
       const draw = () => {
-        const p = DB.people.find(x => x.id === $('#hDoc').value);
-        const rows = historyFor(p, +$('#hPer').value);
+        $('#hRange').hidden = $('#hPer').value !== 'custom';
+        const rows = rowsFor(sel);
         $('#hBody').innerHTML = rows.map(r => `<tr>
           <td class="td-main tnum" data-label="Fecha"><strong>${r.fecha}</strong> <span class="text-muted small">${r.d.toLocaleDateString('es-PE', { weekday: 'short' })}</span></td>
           <td class="num" data-label="Entrada">${r.in || '—'}</td><td class="num" data-label="Salida">${r.out || '—'}</td><td data-label="Estado">${badge(r.st)}</td></tr>`).join('');
+        $('#hEmpty').innerHTML = rows.length ? '' : emptyState('calendar-x', 'Sin registros en este periodo', 'Elige otro periodo o amplía el rango de fechas.');
         const c = counts(rows);
-        $('#hSum').innerHTML = `<h2 class="h3 mb-3">Resumen del periodo</h2>
+        $('#hSum').innerHTML = `<h2 class="h3 mb-1">Resumen del periodo</h2>
+          <p class="small text-muted mb-3">${esc(sel.n)} · ${sel.id} · ${esc(sel.area)} · ${rows.length} días</p>
           <ul class="list-plain">${Object.keys(ST).filter(k => k !== 'pendiente').map(k => `<li class="row-line">${badge(k)}<b class="tnum">${c[k] || 0}</b></li>`).join('')}</ul>`;
       };
-      $('#hDoc').onchange = draw; $('#hPer').onchange = draw; draw();
+      const setActive = i => {
+        active = i;
+        $$('[role="option"]', list).forEach((li, j) => li.setAttribute('aria-selected', String(j === i)));
+        const li = $('#hOpt-' + i);
+        if (li) { q.setAttribute('aria-activedescendant', li.id); li.scrollIntoView({ block: 'nearest' }); } else q.removeAttribute('aria-activedescendant');
+      };
+      const open = text => {
+        opts = doc.filter(p => matchPerson(p, text));
+        list.innerHTML = opts.length
+          ? opts.map((p, i) => `<li role="option" id="hOpt-${i}" aria-selected="false" data-i="${i}"><span class="avatar avatar-sm" aria-hidden="true">${initials(p.n)}</span><span class="min-w-0"><strong>${esc(p.n)}</strong><span class="small text-muted d-block">DNI ${p.dni} · ${esc(p.area)}</span></span></li>`).join('')
+          : `<li class="combo-empty" aria-disabled="true">Sin coincidencias para “${esc(text)}”. Prueba con otro nombre o DNI.</li>`;
+        list.hidden = false; q.setAttribute('aria-expanded', 'true');
+        $('#hQStatus').textContent = opts.length ? `${opts.length} docente${opts.length === 1 ? '' : 's'} encontrado${opts.length === 1 ? '' : 's'}` : 'Sin coincidencias';
+        setActive(opts.length && text ? 0 : -1);
+      };
+      const close = () => { list.hidden = true; q.setAttribute('aria-expanded', 'false'); q.removeAttribute('aria-activedescendant'); active = -1; };
+      const choose = i => { const p = opts[i]; if (!p) return; sel = p; q.value = p.n; close(); draw(); };
+      q.addEventListener('focus', () => { q.select(); open(''); });
+      q.addEventListener('input', () => open(q.value));
+      q.addEventListener('keydown', e => {
+        if (e.key === 'ArrowDown') { e.preventDefault(); if (list.hidden) open(q.value); else if (opts.length) setActive((active + 1) % opts.length); }
+        else if (e.key === 'ArrowUp') { e.preventDefault(); if (opts.length) setActive((active - 1 + opts.length) % opts.length); }
+        else if (e.key === 'Enter') { if (!list.hidden && active >= 0) { e.preventDefault(); choose(active); } }
+        else if (e.key === 'Escape') { if (!list.hidden) { e.preventDefault(); e.stopPropagation(); close(); q.value = sel.n; } }
+      });
+      q.addEventListener('blur', () => setTimeout(() => { close(); if (q.value !== sel.n) q.value = sel.n; }, 120));
+      list.addEventListener('mousedown', e => { e.preventDefault(); const li = e.target.closest('[role="option"]'); if (li) choose(+li.dataset.i); });
+      $('#hPer').onchange = draw; $('#hDesde').onchange = draw; $('#hHasta').onchange = draw;
+      draw();
     }
   };
 };
 
-V['#/asistencia/justificaciones'] = () => ({
-  html: pageHeader({
-    crumbs: [['Inicio', '#/inicio'], ['Asistencia', '#/asistencia/diario'], ['Justificaciones']],
-    title: 'Justificaciones', desc: 'Solicitudes de justificación de tardanzas e inasistencias. Aprobar evita el descuento en planilla.'
-  }) + `<div class="table-card"><div class="table-scroll"><table class="table table-stack">
-      <thead><tr><th scope="col">Solicitante</th><th scope="col">Fecha</th><th scope="col">Tipo</th><th scope="col">Motivo</th><th scope="col">Estado</th><th scope="col" class="text-end">Acciones</th></tr></thead>
-      <tbody id="jBody"></tbody></table></div></div>`,
-  bind() {
-    const draw = () => {
-      $('#jBody').innerHTML = DB.justifs.map(j => {
-        const p = findPerson(j.n);
-        return `<tr>
-        <td class="td-main" data-label="Solicitante">${personCell(p)}</td>
-        <td data-label="Fecha" class="tnum">${j.fecha}</td>
-        <td data-label="Tipo">${j.tipo === 'Tardanza' ? badge('tardanza') : badge('inasistencia')}</td>
-        <td data-label="Motivo">${esc(j.motivo)}${j.adj ? `<br><a href="#" class="small" onclick="return false"><i class="bi bi-paperclip"></i> ${j.adj}</a>` : '<br><span class="small text-muted">Sin sustento adjunto</span>'}</td>
-        <td data-label="Estado">${j.estado === 'pendiente' ? badge('pendiente') : j.estado === 'aprobada' ? badge('justificada', 'Aprobada') : '<span class="status-badge status-badge--inasistencia"><span class="sb-ico">✕</span>Rechazada</span>'}</td>
-        <td class="text-end" data-label="">${j.estado === 'pendiente' ? `<div class="d-flex gap-2 justify-content-end"><button class="btn btn-outline-secondary btn-sm" data-rej="${j.id}">Rechazar</button><button class="btn btn-primary btn-sm" data-ok="${j.id}">Aprobar</button></div>` : '<span class="small text-muted">Resuelta</span>'}</td></tr>`;
-      }).join('');
-    };
-    $('#main').addEventListener('click', e => {
-      const ok = e.target.closest('[data-ok]'), rej = e.target.closest('[data-rej]');
-      if (ok) { const j = DB.justifs.find(x => x.id === ok.dataset.ok); j.estado = 'aprobada'; const p = findPerson(j.n); if (p) p.st = 'justificada'; audit('Aprobó justificación', `${j.id} · ${j.n}`, true); toast('success', 'Justificación aprobada', `${j.n} no tendrá descuento por este registro.`); draw(); }
-      if (rej) { const j = DB.justifs.find(x => x.id === rej.dataset.rej); confirmAction({ title: 'Rechazar justificación', msg: `Se rechazará la solicitud ${j.id} de ${j.n}. El registro mantendrá su estado original y podrá generar descuento.`, ok: 'Rechazar justificación', onOk() { j.estado = 'rechazada'; audit('Rechazó justificación', `${j.id} · ${j.n}`, true); toast('info', 'Justificación rechazada', 'Se notificará al docente.'); draw(); } }); }
-    });
-    draw();
-  }
-});
+/* ---------- Vista previa de documento (v2 · MV-07; reutilizable en MV-13) ----------
+   openDoc({ title, sub, viewer, meta: [[k, v]], file, actions: [{ label, ico, cls, run }] })
+   "Cerrar" a la izquierda; "Descargar" si hay archivo; las acciones extra se ejecutan al cerrar el modal. */
+function openDoc({ title, sub = '', viewer, meta = [], file = '', actions = [], opener = '' }) {
+  const m = $('#docModal');
+  // Al cerrar, el foco vuelve al botón que abrió la vista previa (o a su equivalente si la fila se redibujó)
+  const from = document.activeElement;
+  m.addEventListener('hidden.bs.modal', () => setTimeout(() => { const t = from?.isConnected ? from : opener && $(opener); t?.focus(); }), { once: true });
+  $('#docTitle').textContent = title; $('#docSub').textContent = sub;
+  $('#docViewer').innerHTML = viewer;
+  $('#docMeta').innerHTML = meta.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${v}</dd></div>`).join('');
+  const order = [{ label: 'Cerrar', cls: 'btn-outline-secondary', close: true },
+    ...(file ? [{ label: 'Descargar', ico: 'download', cls: actions.length ? 'btn-outline-secondary' : 'btn-primary', keep: true, run: () => toast('success', 'Descarga iniciada', `${file} · se guarda en tu carpeta de descargas.`) }] : []),
+    ...actions];
+  $('#docFooter').innerHTML = order.map((a, i) => `<button type="button" class="btn ${a.cls}${i === 0 ? ' me-auto' : ''}" data-doc-act="${i}">${a.ico ? `<i class="bi bi-${a.ico}" aria-hidden="true"></i> ` : ''}${esc(a.label)}</button>`).join('');
+  const modal = bootstrap.Modal.getOrCreateInstance(m);
+  $('#docFooter').onclick = e => {
+    const b = e.target.closest('[data-doc-act]'); if (!b) return;
+    const a = order[+b.dataset.docAct];
+    if (a.close) return modal.hide();
+    if (a.keep) return a.run();
+    m.addEventListener('hidden.bs.modal', () => a.run(), { once: true }); modal.hide();
+  };
+  modal.show();
+}
+/* Contenido simulado de los adjuntos de ejemplo. Un adjunto nuevo (subido en Mi asistencia) usa la plantilla genérica. */
+const ADJ_DOCS = {
+  'constancia_cita.pdf': { emisor: 'EsSalud · Policlínico Chincha', titulo: 'Constancia de atención', cuerpo: 'Se deja constancia de que el(la) paciente fue atendido(a) en consulta externa de Medicina General el día indicado, entre las 07:30 y 10:15 h.', firma: 'Dr. J. Palomino · CMP 45821' },
+  'cargo_ugel.jpg': { emisor: 'UGEL 03 · Mesa de partes', titulo: 'Cargo de recepción de expediente', cuerpo: 'Expediente N.° 2026-118734 recibido para trámite de escalafón. Hora de recepción: 08:05 h.', firma: 'Sello de mesa de partes' },
+  'acta_defuncion.pdf': { emisor: 'RENIEC', titulo: 'Acta de defunción (copia)', cuerpo: 'Copia certificada del acta de defunción de familiar directo, presentada como sustento de licencia por duelo.', firma: 'Registrador civil' },
+  'certificado_medico.pdf': { emisor: 'Clínica San Gabriel', titulo: 'Certificado de incapacidad temporal', cuerpo: 'Se indica descanso médico de 1 (un) día por cuadro febril agudo.', firma: 'Dra. M. Ccori · CMP 51207' }
+};
+const isImg = f => /\.(jpe?g|png)$/i.test(f);
+const adjViewer = j => {
+  const d = ADJ_DOCS[j.adj] || { emisor: 'Documento adjuntado por el docente', titulo: j.adj, cuerpo: `Sustento de la solicitud ${j.id}: ${j.motivo}.`, firma: '' };
+  return `<figure class="doc-page${isImg(j.adj) ? ' is-photo' : ''}" role="img" aria-label="Vista previa de ${esc(j.adj)}: ${esc(d.titulo)}, emitido por ${esc(d.emisor)}">
+    <div class="doc-emisor">${esc(d.emisor)}</div>
+    <div class="doc-titulo">${esc(d.titulo)}</div>
+    <p>A nombre de: <strong>${esc(j.n)}</strong> · Fecha: <span class="tnum">${j.fecha}</span></p>
+    <p>${esc(d.cuerpo)}</p>
+    <div class="doc-lines" aria-hidden="true"><span></span><span></span><span style="width:70%"></span></div>
+    ${d.firma ? `<div class="doc-firma">${esc(d.firma)}</div>` : ''}
+  </figure>
+  <p class="small text-muted mt-2 mb-0"><i class="bi bi-info-circle" aria-hidden="true"></i> Vista previa simulada del prototipo.</p>`;
+};
+const parseFecha = s => { const [d, m, y] = s.split('/'); return `${y}-${m}-${d}`; };
+
+V['#/asistencia/justificaciones'] = () => {
+  S.jf = S.jf || { doc: '', est: '', desde: '', hasta: '' };
+  const solicitantes = [...new Set(DB.justifs.map(j => j.n))].sort((a, b) => a.localeCompare(b, 'es'));
+  return {
+    html: pageHeader({
+      crumbs: [['Inicio', '#/inicio'], ['Asistencia', '#/asistencia/diario'], ['Justificaciones']],
+      title: 'Justificaciones', desc: 'Solicitudes de justificación de tardanzas e inasistencias. Aprobar evita el descuento en planilla.'
+    }) + `
+    <div class="filter-bar" role="search" aria-label="Filtrar solicitudes">
+      <div class="fb-item fb-item-wide"><label class="form-label" for="jDoc">Docente</label>
+        <select id="jDoc" class="form-select"><option value="">Todos</option>${solicitantes.map(n => `<option>${esc(n)}</option>`).join('')}</select></div>
+      <div class="fb-item"><label class="form-label" for="jEst">Estado</label>
+        <select id="jEst" class="form-select"><option value="">Todos</option><option value="pendiente">○ Pendiente de revisión</option><option value="aprobada">◆ Aprobada</option><option value="rechazada">✕ Rechazada</option></select></div>
+      <div class="fb-item"><label class="form-label" for="jDesde">Desde</label><input id="jDesde" type="date" class="form-control"></div>
+      <div class="fb-item"><label class="form-label" for="jHasta">Hasta</label><input id="jHasta" type="date" class="form-control"></div>
+    </div>
+    <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+      <div class="active-filters m-0" id="jChips"></div>
+      <p class="small text-muted mb-0 ms-auto" id="jCount" role="status" aria-live="polite"></p>
+    </div>
+    <div class="table-card"><div class="table-scroll"><table class="table table-stack">
+      <thead><tr><th scope="col">Solicitante</th><th scope="col">Fecha</th><th scope="col">Tipo</th><th scope="col">Motivo y sustento</th><th scope="col">Estado</th><th scope="col" class="text-end">Acciones</th></tr></thead>
+      <tbody id="jBody"></tbody></table></div><div id="jEmpty"></div></div>`,
+    bind() {
+      const F = S.jf;
+      const approve = j => {
+        const p = findPerson(j.n), prevSt = p?.st;
+        j.estado = 'aprobada'; if (p && j.fecha === fmtDate(TODAY)) p.st = 'justificada';
+        audit('Aprobó justificación', `${j.id} · ${j.n}`, true);
+        // N01: misma salida de emergencia que en el Registro diario
+        toast('success', 'Justificación aprobada', `${j.n} no tendrá descuento por este registro.`, { undo: () => {
+          j.estado = 'pendiente'; if (p) p.st = prevSt; audit('Deshizo aprobación de justificación', `${j.id} · ${j.n}`, true);
+          if ($('#jBody')) { draw(); $(`[data-ok="${j.id}"]`)?.focus(); }
+          toast('info', 'Aprobación deshecha', `${j.id} vuelve a estar pendiente de revisión.`);
+        } });
+        draw();
+      };
+      const reject = j => confirmAction({ title: 'Rechazar justificación', msg: `Se rechazará la solicitud ${j.id} de ${j.n}. El registro mantendrá su estado original y podrá generar descuento.`, ok: 'Rechazar justificación', onOk() { j.estado = 'rechazada'; audit('Rechazó justificación', `${j.id} · ${j.n}`, true); toast('info', 'Justificación rechazada', 'Se notificará al docente.'); draw(); } });
+      const preview = j => openDoc({
+        title: j.adj, sub: `Sustento de ${j.id} · ${j.n}`, file: j.adj, opener: `[data-adj="${j.id}"]`, viewer: adjViewer(j),
+        meta: [['Solicitud', `${j.id} · ${tipoBadge(j.tipo)}`], ['Motivo', esc(j.motivo)], ['Fecha del registro', `<span class="tnum">${j.fecha}</span>`], ['Formato', isImg(j.adj) ? 'Imagen JPG' : 'Documento PDF'], ['Estado', justifBadge(j.estado)]],
+        actions: j.estado === 'pendiente' ? [{ label: 'Rechazar', cls: 'btn-outline-secondary', run: () => reject(j) }, { label: 'Aprobar', cls: 'btn-primary', run: () => approve(j) }] : []
+      });
+      const draw = () => {
+        const rows = DB.justifs.filter(j => (!F.doc || j.n === F.doc) && (!F.est || j.estado === F.est)
+          && (!F.desde || parseFecha(j.fecha) >= F.desde) && (!F.hasta || parseFecha(j.fecha) <= F.hasta));
+        $('#jBody').innerHTML = rows.map(j => {
+          const p = findPerson(j.n);
+          return `<tr id="j-${j.id}">
+          <td class="td-main" data-label="Solicitante">${personCell(p)}</td>
+          <td data-label="Fecha" class="tnum">${j.fecha}</td>
+          <td data-label="Tipo">${tipoBadge(j.tipo)}</td>
+          <td data-label="Motivo y sustento">${esc(j.motivo)}<br>${j.adj ? `<button type="button" class="btn btn-link btn-sm adj-link" data-adj="${j.id}"><i class="bi bi-${isImg(j.adj) ? 'file-earmark-image' : 'file-earmark-pdf'}" aria-hidden="true"></i><span class="adj-name">${esc(j.adj)}</span> <span class="adj-cta">Ver</span><span class="visually-hidden"> adjunto de ${esc(j.n)}</span></button>` : '<span class="small text-muted">Sin sustento adjunto</span>'}</td>
+          <td data-label="Estado">${justifBadge(j.estado)}</td>
+          <td class="text-end" data-label="">${j.estado === 'pendiente' ? `<div class="d-flex gap-2 justify-content-end"><button class="btn btn-outline-secondary btn-sm" data-rej="${j.id}">Rechazar</button><button class="btn btn-primary btn-sm" data-ok="${j.id}">Aprobar</button></div>` : '<span class="small text-muted">Resuelta</span>'}</td></tr>`;
+        }).join('');
+        $('#jEmpty').innerHTML = rows.length ? '' : emptyState('funnel', 'Ninguna solicitud coincide con estos filtros', 'Cambia el docente, el estado o las fechas, o limpia los filtros.', '<button class="btn btn-outline-secondary" data-clear>Limpiar filtros</button>');
+        const fd = s => s.split('-').reverse().join('/');
+        const chips = [];
+        if (F.doc) chips.push(['doc', `Docente: ${F.doc}`]);
+        if (F.est) chips.push(['est', `Estado: ${JST[F.est].txt}`]);
+        if (F.desde) chips.push(['desde', `Desde: ${fd(F.desde)}`]);
+        if (F.hasta) chips.push(['hasta', `Hasta: ${fd(F.hasta)}`]);
+        $('#jChips').innerHTML = chips.map(c => `<span class="chip">${esc(c[1])}<button aria-label="Quitar filtro ${esc(c[1])}" data-rm="${c[0]}"><i class="bi bi-x" aria-hidden="true"></i></button></span>`).join('')
+          + (chips.length ? '<button class="btn btn-link btn-sm" data-clear>Limpiar filtros</button>' : '');
+        const pend = rows.filter(j => j.estado === 'pendiente').length;
+        $('#jCount').textContent = `${rows.length} de ${DB.justifs.length} solicitudes${pend ? ` · ${pend} pendiente${pend > 1 ? 's' : ''}` : ''}`;
+      };
+      const sync = () => { $('#jDoc').value = F.doc; $('#jEst').value = F.est; $('#jDesde').value = F.desde; $('#jHasta').value = F.hasta; $('#jHasta').min = F.desde; $('#jDesde').max = F.hasta; };
+      [['jDoc', 'doc'], ['jEst', 'est'], ['jDesde', 'desde'], ['jHasta', 'hasta']].forEach(([id, k]) => $('#' + id).onchange = e => { F[k] = e.target.value; sync(); draw(); });
+      $('#main').addEventListener('click', e => {
+        const find = id => DB.justifs.find(x => x.id === id);
+        const ok = e.target.closest('[data-ok]'), rej = e.target.closest('[data-rej]'), adj = e.target.closest('[data-adj]');
+        if (ok) approve(find(ok.dataset.ok));
+        if (rej) reject(find(rej.dataset.rej));
+        if (adj) preview(find(adj.dataset.adj));
+        const rm = e.target.closest('[data-rm]'); if (rm) { F[rm.dataset.rm] = ''; sync(); draw(); $('#jDoc').focus(); }
+        if (e.target.closest('[data-clear]')) { Object.assign(F, { doc: '', est: '', desde: '', hasta: '' }); sync(); draw(); $('#jDoc').focus(); }
+      });
+      sync(); draw();
+    }
+  };
+};
 
 /* ---------- Horarios ---------- */
-const COURSES = { 'Matemática': ['Álgebra', 'Geometría', 'Aritmética'], 'default': ['Clase', 'Taller', 'Tutoría'] };
+/* MV-06: cada área tiene su catálogo de cursos; el color sale de la posición del curso en el catálogo
+   (c1–c5; Tutoría siempre c6), así un curso conserva siempre el mismo color, en toda la semana y en cada visita. */
+const COURSES = {
+  'Matemática': ['Álgebra', 'Geometría', 'Aritmética', 'Tutoría'],
+  'Comunicación': ['Comprensión lectora', 'Gramática', 'Redacción', 'Tutoría'],
+  'Ciencia y Tecnología': ['Biología', 'Química', 'Física', 'Tutoría'],
+  'Inglés': ['Inglés básico', 'Inglés intermedio', 'Conversación', 'Tutoría'],
+  'Historia': ['Historia del Perú', 'Geografía', 'Formación cívica', 'Tutoría'],
+  'Arte y Cultura': ['Dibujo', 'Música', 'Teatro', 'Tutoría'],
+  'Educación Física': ['Deportes', 'Psicomotricidad', 'Salud', 'Tutoría'],
+  'Religión': ['Religión', 'Valores', 'Tutoría'],
+  'Computación': ['Ofimática', 'Programación', 'Robótica', 'Tutoría']
+};
+const coursesOf = p => COURSES[p.area] || [p.area, 'Taller', 'Tutoría'];
+/* Tutoría es común a todas las áreas: color fijo c6 en toda la institución. Los cursos del área usan c1–c5. */
+const courseClass = (p, nm) => nm === 'Tutoría' ? 'c6' : 'c' + (coursesOf(p).indexOf(nm) % 5 + 1);
 function weekGrid(p, highlightRepl = false) {
   const hours = ['07:45', '08:30', '09:15', '10:00', '10:45', '11:30', '12:15', '13:00', '13:45'];
   const days = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes'];
   const seed = +p.dni.slice(-3);
-  const names = COURSES[p.area] || [p.area, p.area, 'Tutoría'];
+  const names = coursesOf(p);
+  const used = new Set(); let hasRepl = false;
   let cells = '<div class="wg-h"></div>' + days.map(d => `<div class="wg-h">${d}</div>`).join('');
   hours.forEach((h, hi) => {
     cells += `<div class="wg-t">${h}</div>`;
@@ -876,11 +1255,15 @@ function weekGrid(p, highlightRepl = false) {
       if (v < 6) {
         const nm = names[(v + di) % names.length], sec = `${(v % 5) + 1}.° ${'ABC'[v % 3]}`;
         const repl = highlightRepl && di === 2 && hi === 2;
-        cells += `<div class="wg-c"><div class="class-block${repl ? ' repl' : v % 3 === 0 ? ' alt' : ''}"><strong>${repl ? '⇄ Reemplazo · ' : ''}${esc(nm)}</strong><span>${sec} · Aula ${100 + v * 3 + di}</span></div></div>`;
+        if (repl) hasRepl = true; else used.add(nm);
+        cells += `<div class="wg-c"><div class="class-block ${repl ? 'repl' : courseClass(p, nm)}"><strong>${repl ? '⇄ Reemplazo · ' : ''}${esc(nm)}</strong><span>${sec} · Aula ${100 + v * 3 + di}</span></div></div>`;
       } else cells += '<div class="wg-c"></div>';
     });
   });
-  return `<div class="table-card"><div style="overflow:auto"><div class="week-grid">${cells}</div></div></div>`;
+  const legend = names.filter(n => used.has(n)).map(n => `<li><span class="legend-swatch ${courseClass(p, n)}" aria-hidden="true"></span>${esc(n)}</li>`).join('')
+    + (hasRepl ? '<li><span class="legend-swatch is-repl" aria-hidden="true"></span>⇄ Reemplazo (rayado)</li>' : '')
+    + '<li><span class="legend-swatch is-break" aria-hidden="true"></span>Recreo</li>';
+  return `<div class="table-card"><ul class="legend wg-legend" aria-label="Leyenda de cursos">${legend}</ul><div class="wg-scroll" style="overflow:auto"><div class="week-grid">${cells}</div></div></div>`;
 }
 V['#/horarios'] = () => {
   const doc = DB.people.filter(p => p.tipo === 'Docente');
@@ -889,9 +1272,7 @@ V['#/horarios'] = () => {
       crumbs: [['Inicio', '#/inicio'], ['Horarios']], title: 'Horarios', desc: 'Horario semanal por docente. Las horas de ingreso definen el cálculo de tardanzas.',
       actions: `<button class="btn btn-primary" id="editSched"><i class="bi bi-pencil"></i> Editar horario</button>`
     }) + `
-    <div class="filter-bar"><div class="grow" style="max-width:360px"><label class="form-label" for="sDoc">Docente</label><select id="sDoc" class="form-select">${doc.map(p => `<option value="${p.id}">${esc(p.n)}</option>`).join('')}</select></div>
-      <div class="legend mb-2"><span><span class="legend-swatch" style="background:var(--primary-soft-2);border-left:3px solid var(--primary)"></span>Curso regular</span><span><span class="legend-swatch" style="background:var(--accent-soft);border-left:3px solid var(--color-accent)"></span>Taller / tutoría</span><span>⇄ Reemplazo (rayado)</span></div>
-    </div>
+    <div class="filter-bar"><div class="grow" style="max-width:360px"><label class="form-label" for="sDoc">Docente</label><select id="sDoc" class="form-select">${doc.map(p => `<option value="${p.id}">${esc(p.n)}</option>`).join('')}</select></div></div>
     <div id="sGrid"></div>`,
     bind() {
       const draw = () => $('#sGrid').innerHTML = weekGrid(DB.people.find(p => p.id === $('#sDoc').value), true);
@@ -923,12 +1304,12 @@ V['#/contratos'] = () => {
         $('#cBody').innerHTML = rows.map(k => {
           const s = contractState(k);
           const pct = Math.min(100, Math.max(0, (TODAY - k.ini) / (k.fin - k.ini) * 100));
-          return `<tr${k.anulado ? ' class="text-muted"' : ''}>
+          return `<tr id="c-${k.id}"${k.anulado ? ' class="text-muted"' : ''}>
             <td data-label="Código" class="tnum hide-mobile">${k.id}</td>
             <td class="td-main" data-label="Titular">${personCell(DB.people.find(p => p.id === k.pid))}</td>
             <td data-label="Tipo">${k.tipo}</td>
             <td data-label="Vigencia" style="min-width:180px"><div class="small tnum mb-1">${fmtDate(k.ini)} – ${fmtDate(k.fin)}</div><div class="progress" role="progressbar" aria-label="Avance de vigencia" aria-valuenow="${Math.round(pct)}" aria-valuemin="0" aria-valuemax="100"><div class="progress-bar" style="width:${pct}%${s.k === 'porvencer' ? ';background:var(--color-warning)' : ''}"></div></div></td>
-            <td data-label="Estado"><span class="status-badge ${s.cls}"><span class="sb-ico" aria-hidden="true">${s.ico}</span>${s.txt}</span></td>
+            <td data-label="Estado">${contractBadge(k)}</td>
             <td class="td-actions text-end">${k.anulado ? '' : `<div class="dropdown"><button class="btn btn-ghost btn-icon btn-sm" data-bs-toggle="dropdown" data-bs-popper-config='{"strategy":"fixed"}' aria-label="Acciones contrato ${k.id}"><i class="bi bi-three-dots"></i></button>
               <ul class="dropdown-menu dropdown-menu-end">
                 <li><button class="dropdown-item" data-renew="${k.id}"><i class="bi bi-arrow-clockwise"></i> Renovar</button></li>
@@ -945,7 +1326,7 @@ V['#/contratos'] = () => {
         if (r) { const k = DB.contracts.find(c => c.id === r.dataset.renew);
           openForm({ title: `Renovar · ${k.id}`, submit: 'Renovar contrato', body: `
             <p class="text-muted">${esc(k.n)} · vigente hasta <b class="tnum">${fmtDate(k.fin)}</b></p>
-            ${field('rFin', 'Nueva fecha de término' + REQ, `<input id="rFin" name="fin" type="date" class="form-control" required min="${k.fin.toISOString().slice(0, 10)}" aria-describedby="rFinErr">`, 'Elige una fecha posterior al término actual.')}
+            ${field('rFin', 'Nueva fecha de término' + REQ, `<input id="rFin" name="fin" type="date" class="form-control" required min="${isoD(k.fin)}" aria-describedby="rFinErr">`, 'Elige una fecha posterior al término actual.')}
             ${field('rTipo', 'Tipo', `<select id="rTipo" name="tipo" class="form-select"><option>${k.tipo}</option><option>Plazo fijo</option><option>Indeterminado</option><option>Por horas</option></select>`)}`,
             onSubmit(d) { const prev = k.fin; k.fin = new Date(d.fin + 'T12:00'); k.tipo = d.tipo; audit('Modificó contrato', `${k.id} · ${k.n} — fin ${fmtDate(k.fin)}`, true); toast('success', 'Contrato renovado', `${k.id} vigente hasta ${fmtDate(k.fin)}.`, { undo: () => { k.fin = prev; draw(); } }); draw(); } }); }
       });
@@ -963,36 +1344,60 @@ V['#/reemplazos'] = () => ({
     <div class="col-xl-4"><div class="section-title"><h2>Asignados recientemente</h2></div><div class="card"><div class="card-body py-2" id="rDone"></div></div></div></div>`,
   bind() {
     const avail = ['Rosa Chávez Paredes', 'Elena Paredes Ruiz', 'Diego Ramírez Cruz', 'Silvia Rojas Campos'];
+    let lastId = null;
+    const unassign = (r, how) => {
+      const who = r.asignado; r.estado = 'pendiente'; r.asignado = ''; delete r.at; lastId = null;
+      audit(how === 'undo' ? 'Deshizo asignación de reemplazo' : 'Canceló reemplazo', `${r.id} · ${who} → ${r.curso}`, true);
+      if ($('#rPend')) { draw(); const card = $('#rc-' + r.id); card?.classList.add('flash-target'); $('#sel-' + r.id)?.focus(); setTimeout(() => card?.classList.remove('flash-target'), 2600); }
+      return who;
+    };
     const draw = () => {
       const pend = DB.replacements.filter(r => r.estado === 'pendiente');
       $('#rPend').innerHTML = pend.length ? pend.map(r => `
-        <div class="card"><div class="card-body">
+        <div class="card" id="rc-${r.id}"><div class="card-body">
           <div class="d-flex flex-wrap justify-content-between gap-2 mb-3">
             <div><span class="overline">${r.id} · ${r.fecha} · ${r.hora}</span><h3 class="mt-1 mb-1">${esc(r.curso)}</h3><p class="small text-muted mb-0">Titular: ${esc(r.ausente)} · ${r.sede}</p></div>
             <div>${badge('inasistencia', 'titular')}</div>
           </div>
           <div class="row g-2 align-items-end">
             <div class="col-sm"><label class="form-label" for="sel-${r.id}">Docente de reemplazo</label>
-              <select class="form-select" id="sel-${r.id}"><option value="">Selecciona…</option>${avail.map((a, i) => `<option ${i === 0 ? '' : ''}>${a}${i < 2 ? ' — sugerido' : ''}</option>`).join('')}</select></div>
-            <div class="col-sm-auto"><button class="btn btn-primary w-100" data-assign="${r.id}">Asignar</button></div>
+              <select class="form-select" id="sel-${r.id}" data-rsel="${r.id}"><option value="">Selecciona…</option>${avail.map((a, i) => `<option value="${a}">${a}${i < 2 ? ' — sugerido' : ''}</option>`).join('')}</select></div>
+            <div class="col-sm-auto d-flex gap-2"><button class="btn btn-ghost" data-rclear="${r.id}" disabled>Limpiar</button><button class="btn btn-primary flex-grow-1" data-assign="${r.id}">Asignar</button></div>
           </div>
           <div class="invalid-feedback d-none" id="err-${r.id}">Selecciona un docente antes de asignar.</div>
         </div></div>`).join('')
         : `<div class="card">${emptyState('check2-circle', 'Todo cubierto', 'No hay clases pendientes de reemplazo para hoy.')}</div>`;
-      $('#rDone').innerHTML = DB.replacements.filter(r => r.estado === 'asignado').map(r => `
-        <div class="row-line"><div><strong class="small d-block">${esc(r.curso)}</strong><span class="small text-muted">${r.fecha} · ⇄ ${esc(r.asignado)}</span></div><span class="status-badge status-badge--puntual"><span class="sb-ico">✓</span>Asignado</span></div>`).join('');
+      /* MV-11: lo recién asignado primero; las asignaciones de hoy se pueden cancelar (las pasadas ya se dictaron) */
+      const done = DB.replacements.filter(r => r.estado === 'asignado').sort((a, b) => (b.at || 0) - (a.at || 0));
+      $('#rDone').innerHTML = done.length ? done.map(r => `
+        <div class="row-line repl-done${r.id === lastId ? ' is-new' : ''}" id="rd-${r.id}" tabindex="-1"><div class="min-w-0"><strong class="small d-block">${esc(r.curso)}</strong><span class="small text-muted">${r.fecha} · ${r.hora} · ⇄ ${esc(r.asignado)}</span>
+          ${r.fecha === fmtDate(TODAY) ? `<button class="btn btn-link btn-sm p-0 d-block text-danger-sys" data-rcancel="${r.id}" aria-label="Cancelar asignación de ${esc(r.asignado)} en ${esc(r.curso)}">Cancelar asignación</button>` : '<span class="small text-muted d-block">Clase dictada</span>'}</div>
+          <span class="status-badge status-badge--puntual"><span class="sb-ico" aria-hidden="true">✓</span>Asignado</span></div>`).join('')
+        : '<p class="small text-muted py-3 mb-0">Aún no hay asignaciones.</p>';
     };
+    $('#main').addEventListener('change', e => {
+      const s = e.target.closest('[data-rsel]'); if (!s) return;
+      $(`[data-rclear="${s.dataset.rsel}"]`).disabled = !s.value;
+      if (s.value) { s.classList.remove('is-invalid'); $('#err-' + s.dataset.rsel).classList.replace('d-block', 'd-none'); }
+    });
     $('#main').addEventListener('click', e => {
+      const cl = e.target.closest('[data-rclear]');
+      if (cl) { const s = $('#sel-' + cl.dataset.rclear); s.value = ''; s.classList.remove('is-invalid'); $('#err-' + cl.dataset.rclear).classList.replace('d-block', 'd-none'); cl.disabled = true; s.focus(); return; }
+      const cx = e.target.closest('[data-rcancel]');
+      if (cx) { const r = DB.replacements.find(x => x.id === cx.dataset.rcancel);
+        confirmAction({ title: 'Cancelar asignación', tone: 'tardanza', ok: 'Cancelar asignación', cancel: 'Mantener asignación', msg: `${r.asignado} ya no cubrirá ${r.curso} (${r.hora}). La clase volverá a "Pendientes de hoy" sin docente y se le avisará del cambio.`,
+          onOk() { const who = unassign(r, 'cancel'); toast('info', 'Asignación cancelada', `${r.curso} vuelve a estar pendiente. Se avisó a ${who}.`); } });
+        return; }
       const b = e.target.closest('[data-assign]'); if (!b) return;
       const r = DB.replacements.find(x => x.id === b.dataset.assign);
       const sel = $('#sel-' + r.id), err = $('#err-' + r.id);
       if (!sel.value) { sel.classList.add('is-invalid'); sel.setAttribute('aria-describedby', 'err-' + r.id); err.classList.remove('d-none'); err.classList.add('d-block'); sel.focus(); return; }
       b.disabled = true; b.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Asignando…';
       setTimeout(() => {
-        r.estado = 'asignado'; r.asignado = sel.value.replace(' — sugerido', '');
+        r.estado = 'asignado'; r.asignado = sel.value; r.at = Date.now(); lastId = r.id;
         audit('Asignó reemplazo', `${r.id} · ${r.asignado} → ${r.curso}`, false);
-        toast('success', 'Reemplazo asignado', `${r.asignado} cubrirá ${r.curso}. Se le notificó.`);
-        draw();
+        toast('success', 'Reemplazo asignado', `${r.asignado} cubrirá ${r.curso}. Se le notificó.`, { undo: () => { unassign(r, 'undo'); toast('info', 'Asignación deshecha', `${r.curso} vuelve a estar pendiente.`); } });
+        draw(); $('#rd-' + r.id)?.focus();
       }, 600);
     });
     draw();
@@ -1015,7 +1420,7 @@ V['#/planillas'] = () => {
   return {
     html: pageHeader({
       crumbs: [['Inicio', '#/inicio'], ['Planillas']], title: `Planilla de ${mes}`,
-      desc: `Descuentos calculados automáticamente desde asistencia: tardanza ${money(DESC_TARD)} c/u · inasistencia = 1/30 de la remuneración.`,
+      desc: `Descuentos calculados automáticamente desde asistencia: tardanza ${money(DESC_TARD)} c/u · inasistencia = 1/30 de la remuneración ${helpTip('desc', '¿cómo se calculan los descuentos?')}`,
       actions: `<button class="btn btn-outline-secondary" id="expP"><i class="bi bi-file-earmark-spreadsheet"></i> Exportar Excel</button><button class="btn btn-primary" id="closeP"><i class="bi bi-lock"></i> Cerrar planilla</button>`
     }) + `
     <div class="alert alert-sys-warning mb-4"><span class="a-ico">▲</span><div><b>${DB.justifs.filter(j => j.estado === 'pendiente').length} justificaciones pendientes</b> pueden modificar los descuentos. <a href="#/asistencia/justificaciones">Revísalas antes de cerrar.</a></div></div>
@@ -1037,8 +1442,19 @@ V['#/planillas'] = () => {
     <div class="table-footer"><span>${rows.length} trabajadores</span><span class="fw-semibold text-body tnum">Total neto: ${money(tot.n)}</span></div></div>`,
     bind() {
       $('#expP').onclick = () => toast('success', 'Exportación lista', `planilla_${mes.replace(' ', '_')}.xlsx se descargó.`);
-      $('#closeP').onclick = () => confirmAction({ title: 'Cerrar planilla', msg: `Se cerrará la planilla de ${mes}. Después del cierre no se podrán modificar asistencias ni descuentos de este periodo.`, ok: 'Cerrar planilla',
+      const closeFinal = () => confirmAction({ title: 'Cerrar planilla', msg: `Se cerrará la planilla de ${mes}. Después del cierre no se podrán modificar asistencias ni descuentos de este periodo.`, ok: 'Cerrar planilla',
         onOk() { audit('Cerró planilla', `${mes} · ${money(tot.n)}`, true); toast('success', 'Planilla cerrada', `Periodo ${mes} cerrado. Los docentes ya pueden ver su boleta.`); } });
+      // MV-04 (P05): si hay justificaciones pendientes, el modal las nombra y la acción principal es revisarlas
+      $('#closeP').onclick = () => {
+        const pend = DB.justifs.filter(j => j.estado === 'pendiente');
+        if (!pend.length) return closeFinal();
+        confirmAction({ tone: 'tardanza', audit: false,
+          title: `Hay ${pend.length} justificaci${pend.length === 1 ? 'ón pendiente' : 'ones pendientes'}`,
+          msg: `Si cierras la planilla de ${mes} ahora, estos descuentos quedarán aplicados aunque luego se aprueben las justificaciones:`,
+          list: pend.map(j => `${j.id} · ${j.n} — ${j.tipo} del ${j.fecha}`),
+          ok: 'Revisar justificaciones', onOk() { location.hash = '#/asistencia/justificaciones'; },
+          alt: { label: 'Cerrar de todos modos', run: closeFinal } });
+      };
     }
   };
 };
@@ -1050,8 +1466,8 @@ V['#/reportes'] = () => ({
       <div class="col-lg-4"><form class="card" id="repForm" novalidate><div class="card-body">
         ${field('rT', 'Tipo de reporte', `<select id="rT" class="form-select"><option>Asistencia mensual</option><option>Tardanzas por docente</option><option>Cumplimiento por área</option><option>Personal y contratos</option></select>`)}
         <div class="row g-2">
-          <div class="col-6">${field('rDe', 'Desde' + REQ, `<input id="rDe" type="date" class="form-control" required value="${addDays(TODAY, -30).toISOString().slice(0, 10)}" aria-describedby="rDeErr">`, 'Indica la fecha de inicio.')}</div>
-          <div class="col-6">${field('rHa', 'Hasta' + REQ, `<input id="rHa" type="date" class="form-control" required value="${TODAY.toISOString().slice(0, 10)}" aria-describedby="rHaErr">`, 'Indica la fecha de fin.')}</div>
+          <div class="col-6">${field('rDe', 'Desde' + REQ, `<input id="rDe" type="date" class="form-control" required value="${isoD(addDays(TODAY, -30))}" aria-describedby="rDeErr">`, 'Indica la fecha de inicio.')}</div>
+          <div class="col-6">${field('rHa', 'Hasta' + REQ, `<input id="rHa" type="date" class="form-control" required value="${isoD(TODAY)}" aria-describedby="rHaErr">`, 'Indica la fecha de fin.')}</div>
         </div>
         ${field('rA', 'Área', `<select id="rA" class="form-select"><option>Todas</option>${[...new Set(DB.people.map(p => p.area))].sort().map(a => `<option>${a}</option>`).join('')}</select>`)}
         <button class="btn btn-primary w-100" type="submit"><i class="bi bi-eye"></i> Previsualizar</button>
@@ -1098,64 +1514,248 @@ V['#/auditoria'] = () => ({
       $('#aBody').innerHTML = DB.audit.filter(a => !only || a[5]).map(a => `<tr>
         <td class="tnum" data-label="Fecha">${fmtDate(a[1])} · ${a[2]}</td>
         <td class="td-main" data-label="Usuario"><div class="person"><span class="avatar avatar-sm">${initials(a[0])}</span><strong>${esc(a[0])}</strong></div></td>
-        <td data-label="Acción">${a[5] ? '<i class="bi bi-shield-lock me-1" aria-label="Acción sensible" style="color:var(--color-accent-text)"></i>' : ''}<span class="fw-semibold">${esc(a[3])}</span></td>
+        <td data-label="Acción">${a[5] ? '<i class="bi bi-shield-lock me-1" aria-hidden="true" style="color:var(--color-accent-text)"></i><span class="visually-hidden">Acción sensible: </span>' : ''}<span class="fw-semibold">${esc(a[3])}</span></td>
         <td data-label="Detalle" class="text-muted">${esc(a[4])}</td></tr>`).join('');
     };
     $('#aSens').onchange = draw; draw();
   }
 });
 
-/* ---------- Configuración multi-colegio (§4.3, §40.3) ---------- */
+/* ---------- Configuración de la institución (§4.3, §40.3 · v2.1: datos institucionales completos) ---------- */
+const LOGO_TYPES = ['image/png', 'image/jpeg', 'image/svg+xml', 'image/webp'], LOGO_MAX = 1024 * 1024;
+const NIVELES = [['inicial', 'Inicial'], ['primaria', 'Primaria'], ['secundaria', 'Secundaria']];
+const schoolShort = () => S.school.short || S.school.name;
+const schoolInitials = () => initials(schoolShort().replace(/^I\.E\.P\.\s*|^I\.E\.\s*/i, '')) || 'IE';
+const logoHTML = (cls = '') => S.school.logo ? `<img src="${S.school.logo}" alt="" class="sb-logo-img ${cls}">` : esc(schoolInitials());
 function applySchool() {
-  $$('[data-school-name]').forEach(e => e.textContent = S.school.name);
-  $$('[data-school-initials]').forEach(e => e.textContent = initials(S.school.name.replace(/^I\.E\.P\.\s*/, '')) || 'SJ');
+  $$('[data-school-name]').forEach(e => e.textContent = schoolShort());
+  $$('[data-school-initials]').forEach(e => { e.innerHTML = logoHTML(); e.classList.toggle('has-img', !!S.school.logo); });
 }
-V['#/configuracion'] = () => ({
-  html: pageHeader({ crumbs: [['Inicio', '#/inicio'], ['Configuración']], title: 'Configuración de la institución', desc: 'Identidad y reglas de asistencia. El color del colegio genera el tema “Institucional”; los colores de estado nunca cambian.' }) + `
-    <div class="row g-4"><div class="col-lg-7"><form class="card" id="cfgForm" novalidate><div class="card-body">
-      <fieldset class="mb-4"><legend>Identidad</legend>
-        ${field('cName', 'Nombre de la institución' + REQ, `<input id="cName" name="name" class="form-control" required value="${esc(S.school.name)}" aria-describedby="cNameErr">`, 'Ingresa el nombre de la institución.')}
+const sedeOptions = (sel = '') => S.school.sedes.map(s => `<option ${s.n === sel ? 'selected' : ''}>${esc(s.n)}</option>`).join('');
+
+V['#/configuracion'] = () => {
+  const sc = S.school;
+  const nav = [['cfg-identidad', 'Identidad'], ['cfg-legal', 'Datos legales'], ['cfg-contacto', 'Contacto y autoridades'], ['cfg-niveles', 'Niveles y sedes'], ['cfg-asistencia', 'Asistencia']];
+  return {
+  html: pageHeader({ crumbs: [['Inicio', '#/inicio'], ['Configuración']], title: 'Configuración de la institución', desc: 'Datos oficiales del colegio. Se muestran en el menú, en la pantalla de ingreso, en las boletas y en los reportes.' }) + `
+    <nav class="cfg-nav mb-4" aria-label="Secciones de la configuración">${nav.map(n => `<a href="#${n[0]}" data-cfg-jump="${n[0]}">${n[1]}</a>`).join('')}</nav>
+    <div class="row g-4"><div class="col-xl-8">
+    <form id="cfgForm" novalidate>
+      <section class="card mb-4 cfg-sec" id="cfg-identidad" aria-labelledby="h-identidad"><div class="card-body">
+        <h2 class="h3 mb-3" id="h-identidad">Identidad</h2>
+        <div class="logo-up mb-4" id="logoDrop">
+          <div class="logo-up-preview" id="logoPrev" aria-hidden="true"></div>
+          <div class="flex-grow-1 min-w-0">
+            <label class="form-label" for="cLogo">Logo del colegio</label>
+            <input id="cLogo" type="file" class="form-control" accept=".png,.jpg,.jpeg,.svg,.webp" aria-describedby="cLogoHelp cLogoErr">
+            <div class="form-text" id="cLogoHelp">PNG, JPG, SVG o WEBP · máx. 1 MB · de preferencia cuadrado (256 × 256 px). También puedes arrastrarlo aquí.</div>
+            <div class="invalid-feedback" id="cLogoErr"></div>
+            <button type="button" class="btn btn-link btn-sm p-0 mt-1 text-danger-sys" id="cLogoDel" hidden>Quitar logo (se usarán las iniciales)</button>
+          </div>
+        </div>
+        <div class="row g-3">
+          <div class="col-md-8">${field('cName', 'Nombre oficial' + REQ, `<input id="cName" name="name" class="form-control" required maxlength="90" value="${esc(sc.name)}" aria-describedby="cNameErr">`, 'Ingresa el nombre oficial de la institución.')}</div>
+          <div class="col-md-4">${field('cShort', 'Nombre corto' + REQ, `<input id="cShort" name="short" class="form-control" required maxlength="24" value="${esc(sc.short)}" aria-describedby="cShortHelp cShortErr">`, 'Ingresa un nombre corto.', 'Se ve en el menú. Máx. 24 caracteres.')}</div>
+          <div class="col-12">${field('cMotto', 'Lema (opcional)', `<input id="cMotto" name="motto" class="form-control" maxlength="80" value="${esc(sc.motto)}">`)}</div>
+        </div>
         <label class="form-label" for="cColor">Color del colegio</label>
-        <div class="d-flex gap-3 align-items-center mb-2"><input id="cColor" name="color" type="color" class="form-control form-control-color" value="${S.school.color}" style="width:56px;height:40px"><code id="cHex" class="tnum">${S.school.color}</code></div>
-        <div id="cCheck" class="small" aria-live="polite"></div>
-      </fieldset>
-      <fieldset><legend>Reglas de asistencia</legend>
+        <div class="d-flex gap-3 align-items-center mb-2"><input id="cColor" name="color" type="color" class="form-control form-control-color" value="${sc.color}" style="width:56px;height:40px"><code id="cHex" class="tnum">${sc.color}</code></div>
+        <div id="cCheck" class="small mb-2" aria-live="polite"></div>
+        <div class="form-check"><input class="form-check-input" type="checkbox" id="cUse" ${S.look.theme === 'institucional' ? 'checked' : ''}><label class="form-check-label" for="cUse">Usar el color del colegio como tema de la plataforma</label></div>
+      </div></section>
+
+      <section class="card mb-4 cfg-sec" id="cfg-legal" aria-labelledby="h-legal"><div class="card-body">
+        <h2 class="h3 mb-3" id="h-legal">Datos legales</h2>
+        <div class="row g-3">
+          <div class="col-md-5">${field('cRuc', 'RUC' + REQ, `<input id="cRuc" name="ruc" class="form-control tnum" inputmode="numeric" maxlength="11" required data-pattern="^(10|15|17|20)\\d{9}$" value="${esc(sc.ruc)}" aria-describedby="cRucHelp cRucErr">`, 'El RUC tiene 11 dígitos y empieza con 10, 15, 17 o 20.', 'Aparece en boletas y reportes.')}</div>
+          <div class="col-md-7">${field('cRazon', 'Razón social (opcional)', `<input id="cRazon" name="razon" class="form-control" maxlength="120" value="${esc(sc.razon)}" aria-describedby="cRazonHelp">`, '', 'Si es distinta del nombre oficial (p. ej., la asociación promotora).')}</div>
+          <div class="col-md-5">${field('cGestion', 'Tipo de gestión' + REQ, `<select id="cGestion" name="gestion" class="form-select" required>${['Privada', 'Pública', 'Pública de gestión privada (convenio)'].map(g => `<option ${sc.gestion === g ? 'selected' : ''}>${g}</option>`).join('')}</select>`)}</div>
+          <div class="col-md-7">${field('cUgel', 'UGEL / DRE' + REQ, `<input id="cUgel" name="ugel" class="form-control" required list="ugelList" value="${esc(sc.ugel)}" aria-describedby="cUgelHelp cUgelErr"><datalist id="ugelList">${['UGEL 01 San Juan de Miraflores', 'UGEL 02 Rímac', 'UGEL 03 Breña', 'UGEL 04 Comas', 'UGEL 05 San Juan de Lurigancho', 'UGEL 06 Ate', 'UGEL 07 San Borja'].map(u => `<option value="${u}">`).join('')}</datalist>`, 'Indica la UGEL o DRE a la que pertenece.', 'Elige de la lista o escribe la tuya.')}</div>
+        </div>
+      </div></section>
+
+      <section class="card mb-4 cfg-sec" id="cfg-contacto" aria-labelledby="h-contacto"><div class="card-body">
+        <h2 class="h3 mb-3" id="h-contacto">Contacto y autoridades</h2>
+        <div class="row g-3">
+          <div class="col-12">${field('cDir', 'Dirección' + REQ, `<input id="cDir" name="dir" class="form-control" required maxlength="120" value="${esc(sc.dir)}" aria-describedby="cDirErr">`, 'Ingresa la dirección de la sede principal.')}</div>
+          <div class="col-md-4">${field('cDist', 'Distrito' + REQ, `<input id="cDist" name="distrito" class="form-control" required value="${esc(sc.distrito)}" aria-describedby="cDistErr">`, 'Ingresa el distrito.')}</div>
+          <div class="col-md-4">${field('cProv', 'Provincia', `<input id="cProv" name="provincia" class="form-control" value="${esc(sc.provincia)}">`)}</div>
+          <div class="col-md-4">${field('cReg', 'Región', `<input id="cReg" name="region" class="form-control" value="${esc(sc.region)}">`)}</div>
+          <div class="col-md-4">${field('cTel', 'Teléfono', `<input id="cTel" name="tel" type="tel" class="form-control tnum" inputmode="tel" data-pattern="^([0-9 ()+-]{6,15})?$" value="${esc(sc.tel)}" aria-describedby="cTelErr">`, 'Usa solo números, espacios, + o guiones.')}</div>
+          <div class="col-md-4">${field('cMail', 'Correo institucional', `<input id="cMail" name="email" type="email" class="form-control" value="${esc(sc.email)}" aria-describedby="cMailErr">`, 'Escribe un correo válido (nombre@colegio.edu.pe).')}</div>
+          <div class="col-md-4">${field('cWeb', 'Sitio web', `<input id="cWeb" name="web" class="form-control" data-pattern="^(https?:\\/\\/)?([\\w-]+\\.)+[a-z]{2,}(\\/\\S*)?$|^$" value="${esc(sc.web)}" aria-describedby="cWebErr">`, 'Escribe una dirección web válida (colegio.edu.pe).')}</div>
+          <div class="col-md-6">${field('cDirector', 'Director(a)' + REQ, `<input id="cDirector" name="director" class="form-control" required value="${esc(sc.director)}" aria-describedby="cDirectorHelp cDirectorErr">`, 'Ingresa el nombre del director o directora.', 'Firma las constancias y reportes oficiales.')}</div>
+          <div class="col-md-6">${field('cRrhh', 'Responsable de RR. HH.' + REQ, `<input id="cRrhh" name="rrhh" class="form-control" required value="${esc(sc.rrhh)}" aria-describedby="cRrhhHelp cRrhhErr">`, 'Ingresa el nombre del responsable de RR. HH.', 'Firma las boletas de pago.')}</div>
+        </div>
+      </div></section>
+
+      <section class="card mb-4 cfg-sec" id="cfg-niveles" aria-labelledby="h-niveles"><div class="card-body">
+        <h2 class="h3 mb-1" id="h-niveles">Niveles y sedes</h2>
+        <p class="small text-muted mb-3">Cada nivel tiene su propio código modular (MINEDU).</p>
+        <fieldset class="mb-4"><legend class="form-label fw-semibold">Niveles que atiende ${REQ}</legend>
+          <div class="row g-3" id="cNiveles">${NIVELES.map(([k, l]) => `
+            <div class="col-md-4"><div class="nivel-box">
+              <div class="form-check mb-2"><input class="form-check-input" type="checkbox" id="nv-${k}" data-nivel="${k}" ${sc.niveles[k].on ? 'checked' : ''}><label class="form-check-label fw-semibold" for="nv-${k}">${l}</label></div>
+              <label class="form-label small" for="cm-${k}">Código modular</label>
+              <input id="cm-${k}" class="form-control form-control-sm tnum" inputmode="numeric" maxlength="7" data-pattern="^\\d{7}$" value="${esc(sc.niveles[k].cod)}" ${sc.niveles[k].on ? 'required' : 'disabled'} aria-describedby="cm-${k}Err">
+              <div class="invalid-feedback" id="cm-${k}Err">7 dígitos.</div>
+            </div></div>`).join('')}
+          </div>
+          <div class="invalid-feedback" id="cNivelesErr">Marca al menos un nivel.</div>
+        </fieldset>
+        <div class="d-flex align-items-center justify-content-between mb-2"><h3 class="h6 mb-0">Sedes</h3><button type="button" class="btn btn-outline-secondary btn-sm" id="sedeAdd"><i class="bi bi-plus-lg" aria-hidden="true"></i> Agregar sede</button></div>
+        <div class="table-card mb-4"><table class="table table-stack mb-0"><thead><tr><th scope="col">Sede</th><th scope="col">Dirección</th><th scope="col" class="num">Personal</th><th scope="col" class="text-end"><span class="visually-hidden">Acciones</span></th></tr></thead><tbody id="sedeBody"></tbody></table></div>
+        <div class="row g-3">
+          <div class="col-sm-6">${field('cIni', 'Inicio del año escolar' + REQ, `<input id="cIni" name="ini" type="date" class="form-control" required value="${sc.anio.ini}" aria-describedby="cIniErr">`, 'Indica la fecha de inicio.')}</div>
+          <div class="col-sm-6">${field('cFin', 'Fin del año escolar' + REQ, `<input id="cFin" name="fin" type="date" class="form-control" required value="${sc.anio.fin}" aria-describedby="cFinErr">`, 'Debe ser posterior al inicio.')}</div>
+        </div>
+      </div></section>
+
+      <section class="card mb-4 cfg-sec" id="cfg-asistencia" aria-labelledby="h-asistencia"><div class="card-body">
+        <h2 class="h3 mb-3" id="h-asistencia">Reglas de asistencia ${helpTip('tol', '¿qué es la tolerancia?')}</h2>
         <div class="row g-3"><div class="col-sm-6">${field('cIn', 'Hora de ingreso', `<input id="cIn" type="time" class="form-control" value="${SCHEDULE_START}" readonly aria-describedby="cInHelp">`, '', 'Se define por horario de cada docente.')}</div>
-        <div class="col-sm-6">${field('cTol', 'Tolerancia (minutos)' + REQ, `<input id="cTol" name="tol" type="number" min="0" max="30" class="form-control" required value="${S.school.tol}" aria-describedby="cTolErr">`, 'Ingresa un valor entre 0 y 30 minutos.')}</div></div>
-      </fieldset>
-      <div class="form-check mt-2"><input class="form-check-input" type="checkbox" id="cUse" ${S.look.theme === 'institucional' ? 'checked' : ''}><label class="form-check-label" for="cUse">Usar el color del colegio como tema de la plataforma</label></div>
-      <div class="d-flex justify-content-end gap-2 mt-3"><span class="audit-note me-auto"><i class="bi bi-shield-lock"></i> Quedará en auditoría</span><button class="btn btn-primary" type="submit">Guardar configuración</button></div>
-    </div></form></div>
-    <div class="col-lg-5"><div class="card"><div class="card-body">
-      <h2 class="h3 mb-3">Escala generada</h2>
-      <div class="swatches mb-2" id="pvScale" aria-hidden="true"></div>
-      <div class="d-flex small text-muted tnum mb-4 text-center">${[50, 100, 200, 300, 500, 700, 800, 900].map(k => `<span class="flex-fill">${k}</span>`).join('')}</div>
-      <p class="small text-muted mb-2">Los estados no cambian con la marca:</p>
-      <div class="d-flex flex-wrap gap-2">${['puntual', 'tardanza', 'inasistencia', 'justificada', 'salida'].map(k => badge(k)).join('')}</div>
-    </div></div></div></div>`,
+        <div class="col-sm-6">${field('cTol', 'Tolerancia (minutos)' + REQ, `<input id="cTol" name="tol" type="number" min="0" max="30" class="form-control" required value="${sc.tol}" aria-describedby="cTolErr cTolHelp">`, 'Ingresa un valor entre 0 y 30 minutos.', 'Minutos de gracia después de la hora de ingreso antes de contar tardanza.')}</div></div>
+      </div></section>
+
+      <div class="save-bar" id="saveBar">
+        <span class="save-state" id="saveState" role="status" aria-live="polite">Sin cambios</span>
+        <span class="audit-note"><i class="bi bi-shield-lock" aria-hidden="true"></i> Quedará en auditoría</span>
+        <button type="button" class="btn btn-ghost" id="cfgReset" disabled>Descartar cambios</button>
+        <button class="btn btn-primary" type="submit">Guardar configuración</button>
+      </div>
+    </form></div>
+
+    <div class="col-xl-4"><div class="cfg-aside">
+      <div class="card mb-4"><div class="card-body">
+        <h2 class="h3 mb-1">Vista previa</h2>
+        <p class="small text-muted mb-3">Así se verá con los datos del formulario (aún sin guardar).</p>
+        <p class="overline mb-2">Menú lateral</p>
+        <div class="pv-brand mb-4" id="pvBrand"></div>
+        <p class="overline mb-2">Encabezado de boleta</p>
+        <div class="pv-doc" id="pvDoc"></div>
+      </div></div>
+      <div class="card"><div class="card-body">
+        <h2 class="h3 mb-3">Escala generada</h2>
+        <div class="swatches mb-2" id="pvScale" aria-hidden="true"></div>
+        <div class="d-flex small text-muted tnum mb-4 text-center">${[50, 100, 200, 300, 500, 700, 800, 900].map(k => `<span class="flex-fill">${k}</span>`).join('')}</div>
+        <p class="small text-muted mb-2">Los estados no cambian con la marca:</p>
+        <div class="d-flex flex-wrap gap-2">${['puntual', 'tardanza', 'inasistencia', 'justificada', 'salida'].map(k => badge(k)).join('')}</div>
+      </div></div>
+    </div></div></div>`,
   bind() {
+    const form = $('#cfgForm');
+    // Borrador: copia de trabajo; solo se aplica al guardar
+    const clone = o => JSON.parse(JSON.stringify(o));
+    let draft = clone(S.school); let saved = JSON.stringify(draft);
+    const dirty = () => JSON.stringify(draft) !== saved;
+    const read = () => {
+      Object.assign(draft, { name: $('#cName').value.trim(), short: $('#cShort').value.trim(), motto: $('#cMotto').value.trim(), color: $('#cColor').value.toUpperCase(),
+        ruc: $('#cRuc').value.trim(), razon: $('#cRazon').value.trim(), gestion: $('#cGestion').value, ugel: $('#cUgel').value.trim(),
+        dir: $('#cDir').value.trim(), distrito: $('#cDist').value.trim(), provincia: $('#cProv').value.trim(), region: $('#cReg').value.trim(),
+        tel: $('#cTel').value.trim(), email: $('#cMail').value.trim(), web: $('#cWeb').value.trim(), director: $('#cDirector').value.trim(), rrhh: $('#cRrhh').value.trim(),
+        anio: { ini: $('#cIni').value, fin: $('#cFin').value }, tol: +$('#cTol').value });
+      NIVELES.forEach(([k]) => { draft.niveles[k] = { on: $('#nv-' + k).checked, cod: $('#cm-' + k).value.trim() }; });
+    };
+    const logoBox = (logo, name, cls) => logo ? `<img src="${logo}" alt="" class="${cls}">` : `<span class="${cls} is-initials">${esc(initials((name || 'IE').replace(/^I\.E\.P\.\s*|^I\.E\.\s*/i, '')) || 'IE')}</span>`;
     const preview = () => {
-      const c = $('#cColor').value.toUpperCase();
+      const c = draft.color;
       $('#cHex').textContent = c;
       const { scale, adjusted } = generateScale(c);
       $('#pvScale').innerHTML = [50, 100, 200, 300, 500, 700, 800, 900].map(k => `<i style="background:${scale[k]}"></i>`).join('');
       $('#cCheck').innerHTML = adjusted
         ? `<span class="text-warning-sys fw-semibold">▲ ${c} tiene contraste ${contrast(c).toFixed(2)}:1 con blanco (mín. 4.5:1).</span> Para botones y enlaces se usará <b class="tnum">${scale[700]}</b> (${contrast(scale[700]).toFixed(2)}:1).`
         : `<span class="text-success-sys fw-semibold">✓ Contraste ${contrast(c).toFixed(2)}:1 con blanco.</span> Se usa tal cual en botones y enlaces.`;
+      $('#logoPrev').innerHTML = logoBox(draft.logo, draft.short || draft.name, 'logo-up-img');
+      $('#cLogoDel').hidden = !draft.logo;
+      $('#pvBrand').innerHTML = `${logoBox(draft.logo, draft.short || draft.name, 'pv-logo')}<div class="min-w-0"><strong class="d-block text-truncate">${esc(draft.short || draft.name || 'Nombre corto')}</strong><span class="small text-muted">Administración</span></div>`;
+      const niv = NIVELES.filter(([k]) => draft.niveles[k].on).map(([k, l]) => `${l}${draft.niveles[k].cod ? ' ' + esc(draft.niveles[k].cod) : ''}`).join(' · ');
+      $('#pvDoc').innerHTML = `<div class="d-flex gap-3 align-items-center">${logoBox(draft.logo, draft.short || draft.name, 'pv-doc-logo')}<div class="min-w-0">
+        <strong class="d-block">${esc(draft.name || 'Nombre oficial')}</strong>
+        ${draft.motto ? `<em class="d-block small">${esc(draft.motto)}</em>` : ''}
+        <span class="d-block small">RUC ${esc(draft.ruc || '—')} · ${esc(draft.ugel || 'UGEL')}</span>
+        <span class="d-block small">${esc([draft.dir, draft.distrito].filter(Boolean).join(', ') || 'Dirección')}</span>
+        ${niv ? `<span class="d-block small">Cód. modular: ${niv}</span>` : ''}</div></div>`;
+      $('#saveState').innerHTML = dirty() ? '<span class="save-dot" aria-hidden="true"></span> Tienes cambios sin guardar' : 'Sin cambios';
+      $('#saveBar').classList.toggle('is-dirty', dirty()); $('#cfgReset').disabled = !dirty();
     };
-    $('#cColor').oninput = preview; preview();
-    $('#cfgForm').onsubmit = e => {
-      e.preventDefault(); if (validateForm(e.target).length) return;
-      if (+$('#cTol').value < 0 || +$('#cTol').value > 30) { $('#cTol').classList.add('is-invalid'); $('#cTol').focus(); return; }
-      S.school = { name: $('#cName').value.trim(), color: $('#cColor').value.toUpperCase(), tol: +$('#cTol').value };
-      store.set('school', S.school); applySchool();
+    const drawSedes = () => {
+      $('#sedeBody').innerHTML = draft.sedes.map((s, i) => { const n = DB.people.filter(p => p.sede === (s.was || s.n)).length;   // si se renombró sin guardar, cuenta con el nombre anterior
+        return `<tr><td class="td-main" data-label="Sede"><strong>${esc(s.n)}</strong></td><td data-label="Dirección">${esc(s.dir || '—')}</td><td class="num" data-label="Personal">${n}</td>
+          <td class="text-end" data-label=""><div class="d-flex gap-1 justify-content-end"><button type="button" class="btn btn-ghost btn-sm" data-sede-edit="${i}" aria-label="Editar ${esc(s.n)}"><i class="bi bi-pencil" aria-hidden="true"></i></button>
+          <button type="button" class="btn btn-ghost btn-sm text-danger-sys" data-sede-del="${i}" ${n ? `disabled title="Tiene ${n} personas asignadas"` : ''} aria-label="Eliminar ${esc(s.n)}${n ? ` (no disponible: tiene ${n} personas asignadas)` : ''}"><i class="bi bi-trash" aria-hidden="true"></i></button></div></td></tr>`; }).join('');
+    };
+    const sedeForm = i => { const s = i == null ? { n: '', dir: '' } : draft.sedes[i];
+      openForm({ title: i == null ? 'Agregar sede' : `Editar · ${s.n}`, submit: i == null ? 'Agregar sede' : 'Guardar sede', auditNote: false, body: `
+        ${field('sN', 'Nombre de la sede' + REQ, `<input id="sN" name="n" class="form-control" required maxlength="40" value="${esc(s.n)}" aria-describedby="sNErr">`, 'Ingresa un nombre que no se repita con otra sede.')}
+        ${field('sD', 'Dirección', `<input id="sD" name="dir" class="form-control" maxlength="120" value="${esc(s.dir)}">`)}
+        ${i != null && DB.people.some(p => p.sede === (s.was || s.n)) ? '<p class="small text-muted mb-0"><i class="bi bi-info-circle" aria-hidden="true"></i> Si cambias el nombre, se actualizará en la ficha de todo el personal de esta sede al guardar la configuración.</p>' : ''}`,
+        onSubmit(d) {
+          const name = d.n.trim();
+          if (i == null) draft.sedes.push({ n: name, dir: d.dir.trim() }); else { draft.sedes[i] = { n: name, dir: d.dir.trim(), was: s.was || (s.n !== name ? s.n : undefined) }; }
+          drawSedes(); preview();
+        } });
+      // H5: el nombre no puede repetir el de otra sede; se marca en el campo antes de enviar
+      const sN = $('#sN'), dup = () => draft.sedes.some((x, j) => j !== i && x.n.trim().toLowerCase() === sN.value.trim().toLowerCase());
+      const chk = () => { sN.setCustomValidity(dup() ? 'repetida' : ''); $('#sNErr').textContent = dup() ? `Ya existe una sede llamada "${sN.value.trim()}".` : 'Ingresa un nombre que no se repita con otra sede.'; };
+      sN.addEventListener('input', () => { chk(); validateField(sN); }); chk(); };
+    const setLogoErr = msg => { const el = $('#cLogo'); el.classList.toggle('is-invalid', !!msg); el.setAttribute('aria-invalid', String(!!msg)); $('#cLogoErr').textContent = msg || ''; };
+    const takeFile = file => {
+      if (!file) return;
+      if (!LOGO_TYPES.includes(file.type)) { setLogoErr(`"${file.name}" no es una imagen válida. Usa PNG, JPG, SVG o WEBP.`); return; }
+      if (file.size > LOGO_MAX) { setLogoErr(`El archivo pesa ${(file.size / 1048576).toFixed(1)} MB. El máximo es 1 MB.`); return; }
+      setLogoErr('');
+      const r = new FileReader(); r.onload = () => { draft.logo = r.result; preview(); }; r.readAsDataURL(file);
+    };
+    $('#cLogo').onchange = e => takeFile(e.target.files[0]);
+    const drop = $('#logoDrop');
+    drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('is-over'); });
+    drop.addEventListener('dragleave', () => drop.classList.remove('is-over'));
+    drop.addEventListener('drop', e => { e.preventDefault(); drop.classList.remove('is-over'); takeFile(e.dataTransfer.files[0]); });
+    $('#cLogoDel').onclick = () => { draft.logo = ''; $('#cLogo').value = ''; setLogoErr(''); preview(); $('#cLogo').focus(); };
+    form.addEventListener('input', e => { read(); preview(); if (e.target.classList.contains('is-invalid')) validateField(e.target); if (e.target.id === 'cFin' || e.target.id === 'cIni') $('#cFin').classList.toggle('is-invalid', !!(draft.anio.ini && draft.anio.fin && draft.anio.fin <= draft.anio.ini)); });
+    form.addEventListener('change', e => {
+      const k = e.target.dataset.nivel;
+      if (k) { const cm = $('#cm-' + k); cm.disabled = !e.target.checked; cm.required = e.target.checked; if (!e.target.checked) { cm.classList.remove('is-invalid'); } else cm.focus();
+        $('#cNivelesErr').classList.toggle('d-block', !NIVELES.some(([n]) => $('#nv-' + n).checked)); }
+      read(); preview();
+    });
+    form.addEventListener('click', e => {
+      const ed = e.target.closest('[data-sede-edit]'); if (ed) sedeForm(+ed.dataset.sedeEdit);
+      const del = e.target.closest('[data-sede-del]');
+      if (del && !del.disabled) { const s = draft.sedes[+del.dataset.sedeDel];
+        confirmAction({ title: 'Eliminar sede', msg: `Se eliminará "${s.n}" de la lista de sedes al guardar la configuración. No tiene personal asignado.`, ok: 'Eliminar sede', audit: false,
+          onOk() { draft.sedes.splice(+del.dataset.sedeDel, 1); drawSedes(); preview(); } }); }
+    });
+    $('#sedeAdd').onclick = () => sedeForm(null);
+    $$('[data-cfg-jump]').forEach(a => a.onclick = e => { e.preventDefault(); const t = $('#' + a.dataset.cfgJump); t.scrollIntoView({ behavior: 'smooth', block: 'start' }); t.querySelector('h2').setAttribute('tabindex', '-1'); t.querySelector('h2').focus({ preventScroll: true }); });
+    $('#cfgReset').onclick = () => route();
+    form.onsubmit = e => {
+      e.preventDefault(); read();
+      const bad = validateForm(form);
+      const tol = $('#cTol'); if (+tol.value < 0 || +tol.value > 30) { tol.classList.add('is-invalid'); bad.push(tol); }
+      if (draft.anio.ini && draft.anio.fin && draft.anio.fin <= draft.anio.ini) { $('#cFin').classList.add('is-invalid'); bad.push($('#cFin')); }
+      const noLevel = !NIVELES.some(([k]) => draft.niveles[k].on); $('#cNivelesErr').classList.toggle('d-block', noLevel); if (noLevel) bad.push($('#nv-inicial'));
+      if (bad.length) {
+        $('#saveState').innerHTML = `<span class="text-danger-sys fw-semibold">✕ Revisa ${bad.length} ${bad.length === 1 ? 'campo' : 'campos'} marcado${bad.length === 1 ? '' : 's'}</span>`;
+        bad[0].scrollIntoView({ block: 'center' }); bad[0].focus({ preventScroll: true }); return;
+      }
+      // Cambios de nombre de sede → actualizar al personal
+      draft.sedes.forEach(s => { if (s.was) { DB.people.forEach(p => { if (p.sede === s.was) p.sede = s.n; }); delete s.was; } });
+      const changed = Object.keys(draft).filter(k => JSON.stringify(draft[k]) !== JSON.stringify(JSON.parse(saved)[k]));
+      S.school = clone(draft); saved = JSON.stringify(draft);
+      try { store.set('school', S.school); } catch { toast('warning', 'Logo no guardado en este equipo', 'La imagen es demasiado grande para el almacenamiento del navegador; se usará hasta cerrar la página.'); }
+      applySchool();
       if ($('#cUse').checked) setLook('theme', 'institucional', true); else if (S.look.theme === 'institucional') setLook('theme', 'bosque', true);
       renderAppearanceMenu();
-      audit('Modificó configuración', `Color ${S.school.color} · tolerancia ${S.school.tol} min`, true);
-      toast('success', 'Configuración guardada', $('#cUse').checked ? 'Se aplicó el tema Institucional en toda la plataforma.' : 'La identidad se actualizó.');
+      const LBL = { name: 'nombre', short: 'nombre corto', motto: 'lema', color: 'color', logo: 'logo', ruc: 'RUC', razon: 'razón social', gestion: 'gestión', ugel: 'UGEL', dir: 'dirección', distrito: 'distrito', provincia: 'provincia', region: 'región', tel: 'teléfono', email: 'correo', web: 'web', director: 'director(a)', rrhh: 'responsable RR. HH.', niveles: 'niveles', sedes: 'sedes', anio: 'año escolar', tol: 'tolerancia' };
+      audit('Modificó configuración', changed.length ? 'Cambió: ' + changed.map(k => LBL[k] || k).join(', ') : 'Sin cambios en los datos', true);
+      toast('success', 'Configuración guardada', changed.length ? `Se actualizó: ${changed.map(k => LBL[k] || k).join(', ')}.` : 'No había cambios en los datos.');
+      drawSedes(); preview();
     };
+    drawSedes(); preview();
   }
-});
+  };
+};
 
 /* ---------- Apariencia (§39–§41) ---------- */
 const MODES = [
@@ -1266,13 +1866,15 @@ function docenteHome() {
           <div class="punch-clock" id="clock" aria-hidden="true">${hhmm(simNow())}</div>
           <div class="punch-meta">
             <span>Ingreso programado <strong class="tnum">${SCHEDULE_START}</strong></span>
-            <span>Tolerancia <strong class="tnum">${S.school.tol} min</strong></span>
+            <span>Tolerancia <strong class="tnum">${S.school.tol} min</strong> ${helpTip('tol', '¿qué es la tolerancia?')}</span>
             <span>Salida <strong class="tnum">${SCHEDULE_END}</strong></span>
           </div>
         </div>
         <div class="text-lg-end">
           ${state === 'done'
-            ? `<div class="status-badge status-badge--puntual solid"><span class="sb-ico">✓</span>Jornada completa</div>`
+            ? (P.st === 'salida'
+              ? `<div class="status-badge status-badge--salida solid"><span class="sb-ico" aria-hidden="true">◀</span>Jornada cerrada · salida anticipada</div>`
+              : `<div class="status-badge status-badge--puntual solid"><span class="sb-ico" aria-hidden="true">✓</span>Jornada completa</div>`)
             : `<button class="btn btn-primary punch-btn" id="punchBtn"><i class="bi bi-${state === 'none' ? 'box-arrow-in-right' : 'box-arrow-right'}"></i> ${state === 'none' ? 'Registrar entrada' : 'Registrar salida'}</button>`}
           <p class="small text-muted mt-2 mb-0">${state === 'none' ? 'Un toque. Te confirmaremos la hora y el estado.' : state === 'in' ? `Entrada registrada a las <b class="tnum">${P.in}</b>` : `Entrada ${P.in} · Salida ${P.out}`}</p>
         </div>
@@ -1297,13 +1899,13 @@ function docenteHome() {
 
     <div class="row g-4">
       <div class="col-lg-5"><div class="card h-100"><div class="card-header"><h2>Horario de hoy</h2><a class="small" href="#/mi-horario">Semana →</a></div><div class="card-body">
-        <ol class="timeline">${sched.map((s, i) => `<li class="${i < nowIdx ? 'done' : i === nowIdx ? 'now' : ''}"><span class="tl-time">${s[0]}</span><span class="tl-dot" aria-hidden="true"></span><div class="tl-body"><strong>${s[1]}${i === nowIdx ? ' <span class="tag ms-1">Ahora</span>' : ''}</strong>${s[2] ? `<span>${s[2]}</span>` : ''}</div></li>`).join('')}</ol>
+        <ol class="timeline">${sched.map((s, i) => `<li class="${i < nowIdx ? 'done' : i === nowIdx ? 'now' : ''}"><span class="tl-time">${s[0]}</span><span class="tl-dot" aria-hidden="true"></span><div class="tl-body"><strong>${coursesOf(me).includes(s[1].split(' · ')[0]) ? `<span class="legend-swatch ${courseClass(me, s[1].split(' · ')[0])}" aria-hidden="true"></span>` : ''}${s[1]}${i === nowIdx ? ' <span class="tag ms-1">Ahora</span>' : ''}</strong>${s[2] ? `<span>${s[2]}</span>` : ''}</div></li>`).join('')}</ol>
       </div></div></div>
       <div class="col-lg-7 d-flex flex-column gap-4">
         <div class="card"><div class="card-header"><h2>Mi mes</h2><a class="small" href="#/mi-asistencia">Ver detalle →</a></div><div class="card-body">
           <div class="row g-3 text-center">${['puntual', 'tardanza', 'inasistencia', 'justificada'].map(k => `<div class="col-6 col-sm-3"><div class="kpi-value" style="font-size:2rem">${c[k] || 0}</div><div class="mt-2">${badge(k)}</div></div>`).join('')}</div>
         </div></div>
-        <div class="card"><div class="card-header"><h2>Descuentos estimados</h2><span class="tag">Antes del cierre</span></div><div class="card-body">
+        <div class="card"><div class="card-header"><h2>Descuentos estimados ${helpTip('desc', '¿cómo se calculan los descuentos?')}</h2><span class="tag">Antes del cierre</span></div><div class="card-body">
           <div class="d-flex align-items-baseline gap-2 mb-3"><span class="kpi-value" style="font-size:2rem">${money(pay.tard + pay.falt)}</span><span class="text-muted small">este mes</span></div>
           <ul class="list-plain small">
             <li class="row-line"><span>▲ ${c.tardanza || 0} tardanza(s) × ${money(DESC_TARD)}</span><b class="tnum">${money(pay.tard)}</b></li>
@@ -1318,18 +1920,43 @@ function docenteHome() {
       clearInterval(S.clockTimer);
       S.clockTimer = setInterval(() => { const c = $('#clock'); if (c) c.textContent = hhmm(simNow()); else clearInterval(S.clockTimer); }, 5000);
       $('#punchBtn')?.addEventListener('click', doPunch);
+      bindUndoPunch();
       $('#simT').onchange = e => { S.simTime = e.target.value; $('#clock').textContent = hhmm(simNow()); };
       $('#simOff').onchange = e => { S.forceOffline = e.target.checked; updateNet(); };
       $('#resetPunch').onclick = () => { S.punch = { in: null, out: null, st: null }; route(); };
     }
   };
 }
+const UNDO_PUNCH_MS = 10000;
 function punchMsg(P) {
+  const canUndo = P.undoUntil && Date.now() < P.undoUntil;
   return `<div class="punch-result"><span class="t-ico kpi-ico" style="background:var(--color-${P.tone}-soft);color:var(--color-${P.tone}-text)" aria-hidden="true">${P.ico}</span>
-    <div><p class="fw-semibold mb-1">${P.msg}</p><p class="small text-muted mb-0">${P.detail}</p></div></div>`;
+    <div class="flex-grow-1"><p class="fw-semibold mb-1">${P.msg}</p><p class="small text-muted mb-0">${P.detail}</p></div>
+    ${canUndo ? `<button class="btn btn-outline-secondary btn-sm align-self-center" id="undoPunch"><i class="bi bi-arrow-counterclockwise" aria-hidden="true"></i> Deshacer</button>` : ''}</div>`;
 }
+function bindUndoPunch() {
+  const b = $('#undoPunch'); if (!b) return;
+  b.onclick = () => {
+    const P = S.punch, prev = P.prev; if (!prev) return;
+    Object.assign(P, prev, { out: null, prev: null, undoUntil: 0,
+      msg: 'Salida anulada · Tu jornada sigue abierta', detail: `Entrada registrada a las ${P.in}. Registra tu salida cuando termines.`, tone: 'info', ico: 'i' });
+    ME().out = ''; ME().st = prev.st;
+    route();
+  };
+}
+/* MV-03: la salida antes de la hora programada pide confirmación (P01) */
 function doPunch() {
-  const btn = $('#punchBtn');
+  const P = S.punch; const t = hhmm(simNow());
+  if (P.in && !P.out && toMin(t) < toMin(SCHEDULE_END)) {
+    confirmAction({ title: '¿Registrar salida anticipada?',
+      msg: `Tu salida programada es ${SCHEDULE_END} y son las ${t}. Si registras ahora, el día quedará como salida anticipada. Podrás deshacerlo durante 10 segundos.`,
+      ok: 'Registrar salida anticipada', tone: 'salida', audit: false, onOk: registerPunch });
+    return;
+  }
+  registerPunch();
+}
+function registerPunch() {
+  const btn = $('#punchBtn'); if (!btn) return;
   const P = S.punch; const now = simNow(); const t = hhmm(now); const nowMin = toMin(t);
   btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm" aria-hidden="true"></span> Registrando…';
   const offline = !isOnline();
@@ -1345,9 +1972,10 @@ function doPunch() {
         : `Ingreso programado ${SCHEDULE_START} + ${S.school.tol} min de tolerancia. Se descontará ${money(DESC_TARD)} salvo que se apruebe una justificación.`;
       ME().st = P.st; ME().in = t;
     } else {
-      P.out = t;
       const early = nowMin < toMin(SCHEDULE_END);
-      if (early) { P.st = 'salida'; P.tone = 'early'; P.ico = '◀'; }
+      if (early) P.prev = { st: P.st, tone: P.tone, ico: P.ico, msg: P.msg, detail: P.detail, queued: P.queued };
+      P.out = t;
+      if (early) { P.st = 'salida'; P.tone = 'early'; P.ico = '◀'; P.undoUntil = Date.now() + UNDO_PUNCH_MS; }
       else { P.tone = 'success'; P.ico = '✓'; }
       P.msg = `Salida registrada a las ${t}${early ? ' · Salida anticipada' : ''}`;
       P.detail = early ? `Tu salida programada es ${SCHEDULE_END}. Si tienes un permiso, solicita la justificación en Mi asistencia.` : `Jornada completa: ${P.in} – ${t}.`;
@@ -1355,12 +1983,17 @@ function doPunch() {
     }
     if (offline) { P.queued = true; P.detail += ' Sin conexión: se guardó en este dispositivo y se enviará al reconectar.'; }
     route();
-    toast(offline ? 'warning' : P.tone === 'warning' ? 'warning' : 'success', P.msg, offline ? 'Pendiente de sincronizar' : 'Registro guardado');
+    // MV-03 / P11: el resultado se muestra una sola vez, en la tarjeta (región aria-live). Sin toast duplicado.
+    if (P.undoUntil) setTimeout(() => { if (S.punch === P && $('#punchResult')) { P.undoUntil = 0; $('#punchResult').innerHTML = punchMsg(P); } }, UNDO_PUNCH_MS);
   }, 500);
 }
 
 V['#/mi-asistencia'] = () => {
-  const me = ME(); const rows = historyFor(me, 20); const c = counts(rows);
+  const me = ME();
+  /* MV-01: el estado mostrado considera la solicitud de justificación del día (aprobada → Justificada) */
+  const reqOf = x => DB.justifs.find(j => j.n === me.n && j.fecha === x.fecha);
+  const rows = historyFor(me, 20).map(x => ({ ...x, st: reqOf(x)?.estado === 'aprobada' ? 'justificada' : x.st }));
+  const c = counts(rows);
   const segs = [['puntual', 'success'], ['tardanza', 'warning'], ['salida', 'early'], ['justificada', 'info'], ['inasistencia', 'danger']].filter(s => c[s[0]]);
   return {
     html: pageHeader({ crumbs: [['Mi panel', '#/inicio'], ['Mi asistencia']], title: 'Mi asistencia', desc: 'Tus registros de los últimos 20 días hábiles. Cada estado indica cómo se calculó.' }) + `
@@ -1368,30 +2001,70 @@ V['#/mi-asistencia'] = () => {
       <div class="stack-bar" role="img" aria-label="${segs.map(s => `${ST[s[0]].txt}: ${c[s[0]]}`).join(', ')}">${segs.map(s => `<span style="flex:${c[s[0]]};background:var(--color-${s[1]});color:var(--color-on-${s[1]})">${ST[s[0]].ico} ${c[s[0]]}</span>`).join('')}</div>
       <div class="legend">${segs.map(s => `<span>${ST[s[0]].ico} ${ST[s[0]].txt}: <b class="tnum">${c[s[0]]}</b></span>`).join('')}</div>
     </div></div>
+    <div class="card mb-4" id="misSolicitudes"><div class="card-header"><h2>Mis solicitudes</h2><span class="small text-muted">RR. HH. las revisa antes del cierre de planilla</span></div>
+      <div class="card-body py-2"><div id="msNotice" role="status" aria-live="polite"></div><div id="msBody"></div></div></div>
     <div class="filter-bar"><div class="fb-item"><label class="form-label" for="maSt">Estado</label><select id="maSt" class="form-select"><option value="">Todos</option>${Object.keys(ST).filter(k => k !== 'pendiente').map(k => `<option value="${k}">${ST[k].ico} ${ST[k].txt}</option>`).join('')}</select></div></div>
     <div class="table-card"><div class="table-scroll"><table class="table table-stack">
-      <thead><tr><th scope="col">Fecha</th><th scope="col" class="num">Entrada</th><th scope="col" class="num">Salida</th><th scope="col">Estado</th><th scope="col" class="text-end"><span class="visually-hidden">Acciones</span></th></tr></thead>
+      <thead><tr><th scope="col">Fecha</th><th scope="col" class="num">Entrada</th><th scope="col" class="num">Salida</th><th scope="col">Estado</th><th scope="col" class="text-end">Justificación</th></tr></thead>
       <tbody id="maBody"></tbody></table></div><div id="maEmpty"></div></div>`,
     bind() {
+      let newId = null;
+      const drawReqs = () => {
+        const mine = DB.justifs.filter(j => j.n === me.n);
+        $('#msBody').innerHTML = mine.length ? `<ul class="list-plain">${mine.map(j => `
+          <li class="row-line req-item${j.id === newId ? ' is-new' : ''}" id="req-${j.id}" tabindex="-1">
+            <div class="min-w-0"><strong class="d-block">${j.id} · <span class="tnum">${j.fecha}</span> ${j.id === newId ? '<span class="tag ms-1">Nueva</span>' : ''}</strong>
+              <span class="small text-muted">${esc(j.tipo)} · ${esc(j.motivo)}${j.adj ? ` · <i class="bi bi-paperclip" aria-hidden="true"></i> ${esc(j.adj)}` : ''}</span>
+              ${j.estado === 'rechazada' ? '<span class="small text-muted d-block">El descuento se mantiene. Consulta a RR. HH. si tienes dudas.</span>' : ''}</div>
+            <div class="d-flex flex-column align-items-end gap-1 flex-shrink-0">${justifBadge(j.estado)}${j.estado === 'pendiente' ? `<button type="button" class="btn btn-link btn-sm p-0 text-danger-sys" data-withdraw="${j.id}">Retirar solicitud</button>` : ''}</div></li>`).join('')}</ul>`
+          : emptyState('inbox', 'Aún no tienes solicitudes', 'Cuando pidas una justificación, aquí verás si está pendiente, aprobada o rechazada.');
+      };
       const draw = () => {
         const f = $('#maSt').value; const r = rows.filter(x => !f || x.st === f);
-        $('#maBody').innerHTML = r.map((x, i) => `<tr>
+        $('#maBody').innerHTML = r.map(x => { const j = reqOf(x);
+          return `<tr>
           <td class="td-main tnum" data-label="Fecha"><strong>${x.fecha}</strong> <span class="small text-muted">${x.d.toLocaleDateString('es-PE', { weekday: 'long' })}</span></td>
           <td class="num" data-label="Entrada">${x.in || '—'}</td><td class="num" data-label="Salida">${x.out || '—'}</td>
           <td data-label="Estado">${badge(x.st)}</td>
-          <td class="text-end" data-label="">${['tardanza', 'inasistencia', 'salida'].includes(x.st) ? `<button class="btn btn-ghost btn-sm" data-req="${i}">Solicitar justificación</button>` : ''}</td></tr>`).join('');
+          <td class="text-end" data-label="Justificación">${j ? justifBadge(j.estado)
+            : ['tardanza', 'inasistencia', 'salida'].includes(x.st) ? `<button class="btn btn-ghost btn-sm" data-req="${x.fecha}">Solicitar justificación</button>` : ''}</td></tr>`; }).join('');
         $('#maEmpty').innerHTML = r.length ? '' : emptyState('emoji-smile', `Sin registros de “${ST[f].txt}”`, 'No tienes registros con este estado en el periodo.');
       };
-      $('#maSt').onchange = draw; draw();
+      $('#maSt').onchange = draw; draw(); drawReqs();
       $('#main').addEventListener('click', e => {
+        if (e.target.closest('[data-notice-close]')) { $('#msNotice').innerHTML = ''; ($('#req-' + newId) || $('#misSolicitudes h2'))?.focus(); return; }
+        const w = e.target.closest('[data-withdraw]');
+        if (w) { const j = DB.justifs.find(x => x.id === w.dataset.withdraw);
+          // N02: el docente puede retirar una solicitud enviada por error mientras siga pendiente
+          confirmAction({ title: 'Retirar solicitud', tone: 'tardanza', audit: false, ok: 'Retirar solicitud', cancel: 'Mantener solicitud',
+            msg: `Se retirará la solicitud ${j.id} del ${j.fecha}. RR. HH. ya no la verá y el registro volverá a su estado original (${j.tipo.toLowerCase()}). Podrás enviar una nueva si lo necesitas.`,
+            onOk() {
+              DB.justifs.splice(DB.justifs.indexOf(j), 1); if (newId === j.id) newId = null;
+              draw(); drawReqs();
+              $('#msNotice').innerHTML = `<div class="alert alert-sys-info submit-notice mt-2 mb-2"><span class="a-ico" aria-hidden="true">i</span><div class="flex-grow-1"><b>Solicitud ${j.id} retirada.</b> El registro del ${j.fecha} vuelve a mostrar "Solicitar justificación".</div><button type="button" class="btn-close btn-sm" aria-label="Cerrar aviso" data-notice-close></button></div>`;
+              const again = $(`[data-req="${j.fecha}"]`); (again || $('#misSolicitudes h2'))?.focus();
+            } });
+          return; }
         const b = e.target.closest('[data-req]'); if (!b) return;
-        const x = rows.filter(r => !$('#maSt').value || r.st === $('#maSt').value)[+b.dataset.req];
+        const x = rows.find(r => r.fecha === b.dataset.req);
+        if (!x || reqOf(x)) return; // ya existe una solicitud para este registro
         openForm({ title: `Solicitar justificación · ${x.fecha}`, submit: 'Enviar solicitud', auditNote: false, body: `
           <p class="mb-3">Registro: ${badge(x.st)}</p>
           ${field('sMot', 'Motivo' + REQ, `<select id="sMot" name="mot" class="form-select" required aria-describedby="sMotErr"><option value="">Selecciona…</option><option>Salud</option><option>Trámite oficial</option><option>Transporte / fuerza mayor</option><option>Otro</option></select>`, 'Selecciona un motivo.')}
           ${field('sDet', 'Explica brevemente' + REQ, `<textarea id="sDet" name="det" class="form-control" rows="3" required minlength="10" aria-describedby="sDetErr"></textarea>`, 'Escribe al menos 10 caracteres.')}
-          ${field('sAdj', 'Adjuntar sustento (opcional)', `<input id="sAdj" type="file" class="form-control" accept=".pdf,.jpg,.png">`, '', 'PDF, JPG o PNG. Máx. 5 MB.')}`,
-          onSubmit(d) { DB.justifs.unshift({ id: 'J-' + (119 + DB.justifs.length), n: me.n, fecha: x.fecha, tipo: x.st === 'tardanza' ? 'Tardanza' : 'Inasistencia', motivo: d.mot, adj: '', estado: 'pendiente' }); toast('success', 'Solicitud enviada', 'RR. HH. la revisará. Te avisaremos cuando se resuelva.'); } });
+          ${field('sAdj', 'Adjuntar sustento (opcional)', `<input id="sAdj" name="adj" type="file" class="form-control" accept=".pdf,.jpg,.png" aria-describedby="sAdjHelp">`, '', 'PDF, JPG o PNG. Máx. 5 MB.')}`,
+          onSubmit(d) {
+            const id = 'J-' + (Math.max(...DB.justifs.map(j => +j.id.slice(2))) + 1);
+            DB.justifs.unshift({ id, n: me.n, fecha: x.fecha, tipo: JTIPO[x.st], motivo: d.mot, det: d.det, adj: d.adj?.name || '', estado: 'pendiente' });
+            newId = id; draw(); drawReqs();
+            /* MV-12 · M-07: la confirmación queda en el área de trabajo, junto a la solicitud (no solo un toast en la esquina).
+               Sin toast duplicado: misma regla que la marcación (MV-03 · P11). */
+            $('#msNotice').innerHTML = `<div class="alert alert-sys-success submit-notice mt-2 mb-2"><span class="a-ico" aria-hidden="true">✓</span>
+              <div class="flex-grow-1"><b>Solicitud ${id} enviada.</b> Quedó en estado <b>○ Pendiente de revisión</b>. RR. HH. la revisará antes del cierre de planilla y te avisaremos en <i class="bi bi-bell" aria-hidden="true"></i> Notificaciones.</div>
+              <button type="button" class="btn-close btn-sm" aria-label="Cerrar confirmación" data-notice-close></button></div>`;
+            $('#misSolicitudes').scrollIntoView({ block: 'start', behavior: 'smooth' });
+            $('#req-' + id)?.focus({ preventScroll: true });
+          } });
       });
     }
   };
@@ -1408,7 +2081,7 @@ V['#/mis-pagos'] = () => {
   return {
     html: pageHeader({ crumbs: [['Mi panel', '#/inicio'], ['Mis pagos']], title: 'Mis pagos', desc: 'Boletas y detalle de descuentos. Solo tú y RR. HH. pueden ver esta información.' }) + `
     <div class="row g-4">
-      <div class="col-lg-5"><div class="card"><div class="card-header"><h2>${months[0]}</h2><span class="tag">En curso</span></div><div class="card-body">
+      <div class="col-lg-5"><div class="card"><div class="card-header"><h2>${months[0].charAt(0).toUpperCase() + months[0].slice(1)}</h2><span class="tag">En curso</span></div><div class="card-body">
         <ul class="list-plain">
           <li class="row-line"><span>Remuneración básica</span><b class="tnum">${money(me.basico)}</b></li>
           <li class="row-line"><span>▲ Tardanzas (${p.c.tardanza || 0})</span><span class="tnum text-warning-sys">− ${money(p.tard)}</span></li>
@@ -1420,10 +2093,34 @@ V['#/mis-pagos'] = () => {
       </div></div></div>
       <div class="col-lg-7"><div class="table-card"><table class="table table-stack">
         <thead><tr><th scope="col">Periodo</th><th scope="col" class="num">Neto</th><th scope="col">Estado</th><th scope="col" class="text-end"><span class="visually-hidden">Boleta</span></th></tr></thead>
-        <tbody>${months.slice(1).map((m, i) => `<tr><td class="td-main text-capitalize" data-label="Periodo"><strong>${m}</strong></td><td class="num" data-label="Neto">${money(p.neto + (i - 1) * 15)}</td><td data-label="Estado"><span class="status-badge status-badge--puntual"><span class="sb-ico">✓</span>Pagado</span></td>
-          <td class="text-end" data-label=""><button class="btn btn-outline-secondary btn-sm" data-bol="${m}"><i class="bi bi-file-earmark-pdf"></i> Boleta</button></td></tr>`).join('')}</tbody></table></div></div>
+        <tbody>${months.slice(1).map((m, i) => `<tr id="bol-${i}"><td class="td-main" data-label="Periodo"><strong>${m.charAt(0).toUpperCase() + m.slice(1)}</strong></td><td class="num" data-label="Neto">${money(me.basico - Math.max(0, p.tard - (i - 1) * 15) - p.falt - p.afp)}</td><td data-label="Estado"><span class="status-badge status-badge--puntual"><span class="sb-ico">✓</span>Pagado</span></td>
+          <td class="text-end" data-label=""><button class="btn btn-outline-secondary btn-sm text-nowrap" data-bol="${i}" aria-label="Ver boleta de ${m}"><i class="bi bi-eye" aria-hidden="true"></i> Ver boleta</button></td></tr>`).join('')}</tbody></table></div></div>
     </div>`,
-    bind() { $$('[data-bol]').forEach(b => b.onclick = () => toast('success', 'Boleta descargada', `boleta_${b.dataset.bol.replace(/\s/g, '_')}.pdf`)); }
+    bind() {
+      /* MV-13 · M-10: la boleta se consulta en pantalla (vista previa) y se descarga solo si se necesita */
+      $$('[data-bol]').forEach(b => b.onclick = () => {
+        const i = +b.dataset.bol, m = months[i + 1], adj = (i - 1) * 15;
+        const tard = Math.max(0, p.tard - adj), neto = me.basico - tard - p.falt - p.afp;
+        const file = `boleta_${m.replace(/ de /g, '_').replace(/\s/g, '_')}.pdf`;
+        const row = (k, v, cls = '') => `<tr><td>${k}</td><td class="num tnum ${cls}">${v}</td></tr>`;
+        openDoc({
+          title: `Boleta de ${m}`, sub: `${me.n} · ${me.id}`, file, opener: `[data-bol="${i}"]`,
+          viewer: `<figure class="doc-page boleta" role="img" aria-label="Boleta de pago de ${m}: neto ${money(neto)}">
+            <div class="doc-emisor doc-emisor-logo">${S.school.logo ? `<img src="${S.school.logo}" alt="">` : ""}<span>${esc(S.school.name)} · RUC ${esc(S.school.ruc)}<br><small>${esc([S.school.dir, S.school.distrito].filter(Boolean).join(", "))} · ${esc(S.school.ugel)}</small></span></div>
+            <div class="doc-titulo">Boleta de pago · ${m.charAt(0).toUpperCase() + m.slice(1)}</div>
+            <p class="mb-3">Trabajador: <strong>${esc(me.n)}</strong> · DNI ${me.dni}<br>Cargo: Docente de ${esc(me.area)} · ${esc(me.sede)}</p>
+            <table class="boleta-tabla"><thead><tr><th>Concepto</th><th class="num">Monto</th></tr></thead><tbody>
+              ${row('Remuneración básica', money(me.basico))}
+              ${row('▲ Descuento por tardanzas', '− ' + money(tard))}
+              ${row('✕ Descuento por inasistencias', '− ' + money(p.falt))}
+              ${row('AFP / ONP (13 %)', '− ' + money(p.afp))}
+            </tbody><tfoot><tr><th>Neto pagado</th><th class="num tnum">${money(neto)}</th></tr></tfoot></table>
+            <div class="doc-firma">${esc(S.school.rrhh)}<br>Recursos Humanos</div>
+          </figure>`,
+          meta: [['Periodo', `${m.charAt(0).toUpperCase() + m.slice(1)}`], ['Estado', '<span class="status-badge status-badge--puntual"><span class="sb-ico" aria-hidden="true">✓</span>Pagado</span>'], ['Neto', `<strong class="tnum">${money(neto)}</strong>`], ['Formato', 'Documento PDF']]
+        });
+      });
+    }
   };
 };
 
@@ -1449,7 +2146,7 @@ function route() {
   if (!V[h]) { h = '#/inicio'; history.replaceState(null, '', h); }
   const main = $('#main');
   const allowed = allowedHrefs(S.user.role).includes(h);
-  markActiveNav();
+  markActiveNav(); renderNotifs();   // MV-08: las notificaciones se recalculan con los datos actuales
   if (window.innerWidth < 992) setMobileOpen(false);
   bootstrap.Offcanvas.getInstance('#drawer')?.hide();
 
@@ -1473,9 +2170,30 @@ function route() {
     const h1 = $('h1', fresh);
     if (!firstLoad && h1) h1.focus({ preventScroll: true });
     window.scrollTo(0, 0);
+    // MV-08: al llegar desde una notificación, resaltar y enfocar el elemento al que se refiere
+    const fl = S.flash && $(S.flash, fresh); S.flash = null;
+    if (fl) { if (!fl.hasAttribute('tabindex')) fl.setAttribute('tabindex', '-1'); fl.classList.add('flash-target'); fl.scrollIntoView({ block: 'center', behavior: 'instant' }); fl.focus({ preventScroll: true }); setTimeout(() => fl.classList.remove('flash-target'), 2600); }
     document.title = `${h1 ? h1.textContent : 'Inicio'} · School HR`;
   }, 220);
 }
+/* AC-02 · WCAG 2.1.1: un contenedor que se desplaza debe poder recorrerse con teclado.
+   Solo recibe tabindex si de verdad desborda (no se agregan paradas de Tab innecesarias). */
+function a11yScrollRegions() {
+  $$('.table-scroll, .wg-scroll').forEach(el => {
+    const over = el.scrollWidth > el.clientWidth + 1 || el.scrollHeight > el.clientHeight + 1;
+    if (over) {
+      if (el.getAttribute('tabindex') !== '0') {
+        el.setAttribute('tabindex', '0'); el.setAttribute('role', 'region');
+        const card = el.closest('.card, .table-card'), col = card?.parentElement;
+        const head = card?.querySelector('.card-header h2') || col?.querySelector(':scope > .section-title h2') || card?.closest('[class*="col-"]')?.querySelector('.section-title h2');
+        const name = (head || $('#main h1'))?.textContent.trim() || 'Contenido';
+        el.setAttribute('aria-label', `${name} (tabla con desplazamiento)`);
+      }
+    } else if (el.getAttribute('tabindex') === '0') { el.removeAttribute('tabindex'); el.removeAttribute('role'); el.removeAttribute('aria-label'); }
+  });
+}
+let a11yRaf = 0;
+const a11yQueue = () => { cancelAnimationFrame(a11yRaf); a11yRaf = requestAnimationFrame(a11yScrollRegions); };
 function bindGlobalActions(root) {
   $$('[data-action="new-person"]', root).forEach(b => b.onclick = () => personForm());
 }
@@ -1524,19 +2242,52 @@ function updateNet() {
 /* ==========================================================================
    Sesión
    ========================================================================== */
+/* MV-08 · P09: cada notificación es un enlace real a su pantalla, se calcula desde los datos
+   (nada fijo como "15/09") y, al llegar, resalta el elemento al que se refiere (S.flash). */
 const NOTIFS = {
-  admin: [['▲', 'warning', 'Contrato por vencer', 'María Torres Vega · 12 días'], ['i', 'info', '3 clases sin reemplazo', 'Hoy · Sede Norte'], ['◆', 'early', 'Nueva justificación', 'Jorge Huamán Ríos']],
-  docente: [['✓', 'success', 'Justificación aprobada', '15/09 · Tardanza'], ['i', 'info', 'Boleta disponible', 'Agosto 2026'], ['⇄', 'early', 'Reemplazo asignado', 'Mié · Geometría 4.° B']]
+  admin: () => {
+    const k = DB.contracts.filter(c => contractState(c).k === 'porvencer').sort((a, b) => a.fin - b.fin)[0];
+    const sinRepl = DB.replacements.filter(r => r.estado === 'pendiente').length;
+    const j = DB.justifs.find(x => x.estado === 'pendiente');
+    return [
+      k && { id: 'n-contrato', ico: '▲', tone: 'warning', title: 'Contrato por vencer', sub: `${k.n} · ${contractState(k).txt.toLowerCase()}`, href: '#/contratos', dest: 'Contratos', flash: `#c-${k.id}` },
+      sinRepl && { id: 'n-repl', ico: '⇄', tone: 'early', title: `${sinRepl} ${sinRepl === 1 ? 'clase' : 'clases'} sin reemplazo`, sub: 'Hoy · asigna un docente disponible', href: '#/reemplazos', dest: 'Reemplazos', flash: '#rPend > .card' },
+      j && { id: 'n-justif', ico: '○', tone: 'neutral', title: 'Nueva justificación', sub: `${j.n} · ${j.tipo.toLowerCase()} del ${j.fecha.slice(0, 5)}`, href: '#/asistencia/justificaciones', dest: 'Justificaciones', flash: `#j-${j.id}`, pre: () => { S.jf = { doc: j.n, est: 'pendiente', desde: '', hasta: '' }; } }
+    ].filter(Boolean);
+  },
+  docente: () => {
+    const me = ME();
+    const j = DB.justifs.filter(x => x.n === me.n && x.estado !== 'pendiente')[0];
+    const bol = new Date(TODAY.getFullYear(), TODAY.getMonth() - 1, 1).toLocaleDateString('es-PE', { month: 'long', year: 'numeric' });
+    return [
+      j && { id: 'n-justif-' + j.id, ico: j.estado === 'aprobada' ? '◆' : '✕', tone: j.estado === 'aprobada' ? 'info' : 'danger', title: `Justificación ${j.estado}`, sub: `${j.id} · ${j.tipo.toLowerCase()} del ${j.fecha.slice(0, 5)}`, href: '#/mi-asistencia', dest: 'Mi asistencia', flash: `#req-${j.id}` },
+      { id: 'n-boleta', ico: 'i', tone: 'info', title: 'Boleta disponible', sub: bol.charAt(0).toUpperCase() + bol.slice(1), href: '#/mis-pagos', dest: 'Mis pagos', flash: '#bol-0' },
+      { id: 'n-repl', ico: '⇄', tone: 'early', title: 'Reemplazo asignado', sub: 'Miércoles 09:15 · cubres una clase', href: '#/mi-horario', dest: 'Mi horario', flash: '.class-block.repl' }
+    ].filter(Boolean);
+  }
 };
+function renderNotifs() {
+  const list = NOTIFS[S.user.role](); S.notifItems = list;
+  S.notifRead = S.notifRead || new Set();
+  const unread = list.filter(n => !S.notifRead.has(n.id)).length;
+  $('#notifList').innerHTML = list.length ? list.map(n => `<a href="${n.href}" class="notif-item${S.notifRead.has(n.id) ? '' : ' is-unread'}" data-notif="${n.id}">
+      <span class="ac-ico kpi-ico notif-ico" style="background:var(--color-${n.tone}-soft);color:var(--color-${n.tone}-text)" aria-hidden="true">${n.ico}</span>
+      <span class="min-w-0 flex-grow-1"><strong class="small d-block">${esc(n.title)}${S.notifRead.has(n.id) ? '' : '<span class="visually-hidden"> (nueva)</span>'}</strong><span class="small text-muted d-block">${esc(n.sub)}</span>
+        <span class="notif-dest">Ir a ${esc(n.dest)} <i class="bi bi-arrow-right" aria-hidden="true"></i></span></span>
+      ${S.notifRead.has(n.id) ? '' : '<span class="notif-unread" aria-hidden="true"></span>'}</a>`).join('')
+    : '<p class="small text-muted px-3 py-4 mb-0 text-center">No tienes notificaciones.</p>';
+  $('#notifCount').hidden = !unread; $('#notifCount').textContent = unread;
+  $('#notifBtn').setAttribute('aria-label', unread ? `Notificaciones, ${unread} ${unread === 1 ? 'nueva' : 'nuevas'}` : 'Notificaciones, sin nuevas');
+  $('#markRead').disabled = !unread;
+}
 function login(role) {
   S.user = USERS[role];
   store.set('role', role);
   $('#login').hidden = true; $('#app').hidden = false;
-  $('#uName').textContent = S.user.name; $('#uRole').textContent = S.user.short; $('#uAvatar').textContent = initials(S.user.name);
+  $('#uName').textContent = S.user.name; $('#uRole').textContent = S.user.short; $('#uChipSr').textContent = window.innerWidth < 576 ? `${S.user.name}, ${S.user.short}: menú de usuario` : ': menú de usuario'; $('#uAvatar').textContent = initials(S.user.name);
   $('#sbRole').textContent = S.user.roleLabel;
   $('#switchRole span').textContent = role === 'admin' ? 'Cambiar a vista Docente (demo)' : 'Cambiar a vista RR. HH. (demo)';
-  $('#notifList').innerHTML = NOTIFS[role].map(n => `<a href="#" class="d-flex gap-3 px-3 py-3 border-bottom text-reset text-decoration-none" onclick="return false"><span class="ac-ico kpi-ico" style="width:28px;height:28px;background:var(--color-${n[1]}-soft);color:var(--color-${n[1]}-text)" aria-hidden="true">${n[0]}</span><span><strong class="small d-block">${n[2]}</strong><span class="small text-muted">${n[3]}</span></span></a>`).join('');
-  $('#notifCount').hidden = false; $('#notifCount').textContent = NOTIFS[role].length;
+  S.notifRead = new Set(); renderNotifs();
   renderNav(); applyCollapsed();
   if (!location.hash || !allowedHrefs(role).includes(location.hash)) location.hash = '#/inicio'; else route();
 }
@@ -1585,22 +2336,33 @@ function init() {
   $$('[data-demo]').forEach(b => b.onclick = () => login(b.dataset.demo));
 
   // Shell
+  initHelp();
+  new MutationObserver(a11yQueue).observe(document.getElementById('app'), { childList: true, subtree: true });
+  addEventListener('resize', a11yQueue);
   $('#collapseBtn').onclick = toggleCollapsed;
   $('#menuBtn').onclick = () => setMobileOpen(true);
   $('#sbOverlay').onclick = () => setMobileOpen(false);
   $('#searchBtn').onclick = cmdOpen; $('#searchBtnMobile').onclick = cmdOpen;
   $('#logout').onclick = logout;
   $('#switchRole').onclick = () => { login(S.user.role === 'admin' ? 'docente' : 'admin'); location.hash = '#/inicio'; };
-  $('#markRead').onclick = () => { $('#notifCount').hidden = true; };
+  $('#markRead').onclick = () => { S.notifItems.forEach(n => S.notifRead.add(n.id)); renderNotifs(); };
+  $('#notifList').addEventListener('click', e => {
+    const a = e.target.closest('[data-notif]'); if (!a) return;
+    const n = S.notifItems.find(x => x.id === a.dataset.notif);
+    S.notifRead.add(n.id); n.pre?.(); S.flash = n.flash || null;
+    bootstrap.Dropdown.getOrCreateInstance('#notifBtn').hide();
+    if (location.hash === n.href) { e.preventDefault(); route(); }   // misma pantalla: volver a dibujar para aplicar filtro/resaltado
+    setTimeout(renderNotifs, 0);
+  });
   $('#sbNav').addEventListener('click', e => { if (e.target.closest('a') && window.innerWidth < 992) setMobileOpen(false); });
 
-  // Tooltip del sidebar plegado
+  // Tooltip del sidebar en modo íconos (los grupos muestran el submenú flotante en su lugar)
   const tip = document.createElement('div');
   tip.className = 'sb-tip'; tip.hidden = true; tip.setAttribute('role', 'tooltip');
   document.body.appendChild(tip);
   const showTip = e => {
     const it = e.target.closest?.('.sb-item[data-tip]');
-    if (!it || !S.collapsed || !isDesktop()) { tip.hidden = true; return; }
+    if (!it || !isCompact() || it.dataset.group) { tip.hidden = true; return; }
     const r = it.getBoundingClientRect();
     tip.textContent = it.dataset.tip; tip.style.top = (r.top + r.height / 2) + 'px'; tip.style.left = (r.right + 12) + 'px'; tip.hidden = false;
   };
@@ -1610,6 +2372,21 @@ function init() {
   $('#sidebar').addEventListener('mouseleave', hideTip);
   $('#sidebar').addEventListener('focusout', hideTip);
   $('#sidebar').addEventListener('click', hideTip);
+
+  // Submenú flotante (MV-02): se abre al pasar el cursor o con Enter/Espacio; Esc lo cierra y devuelve el foco
+  $('#sidebar').addEventListener('mouseover', e => {
+    if (!isCompact()) return;
+    if (e.target.closest('#sbFlyout')) { clearTimeout(flyTimer); return; }
+    const g = e.target.closest('.sb-item[data-group]');
+    if (g) openFlyout(g);
+    else if (e.target.closest('.sb-item')) closeFlyout();
+  });
+  $('#sidebar').addEventListener('mouseleave', () => { flyTimer = setTimeout(() => closeFlyout(), 250); });
+  $('#sidebar').addEventListener('focusin', e => { if (flyBtn && !e.target.closest('#sbFlyout') && e.target !== flyBtn) closeFlyout(); });
+  $('#sidebar').addEventListener('keydown', e => { if (e.key === 'Escape' && flyBtn) { e.stopPropagation(); closeFlyout(true); } });
+  $('#sidebar').addEventListener('click', e => { if (e.target.closest('#sbFlyout a')) closeFlyout(); });
+  document.addEventListener('click', e => { if (flyBtn && !e.target.closest('#sidebar')) closeFlyout(); });
+  window.addEventListener('resize', () => { closeFlyout(); if (isDesktop() && $('#app').classList.contains('sb-open')) setMobileOpen(false); });
 
   // Command menu
   $('#cmdkInput').addEventListener('input', () => { cmdSel = 0; cmdRender(); });

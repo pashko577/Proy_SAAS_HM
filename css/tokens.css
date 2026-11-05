@@ -79,6 +79,21 @@
   --color-neutral: #8E9AA5; --color-on-neutral: #000000; --color-neutral-text: #5F6B76; --color-neutral-soft: #F1F3F5; --color-neutral-border: #DCE0E5; --color-neutral-icon: #7B8791;
   --color-danger-solid: #A63F00; --color-danger-hover: #843200;   /* botón destructivo */
 
+  /* Texto secundario sobre fondos tintados (avatares, bloques de horario) · AC-01: ≥ 4.5:1 */
+  --color-text-on-soft: #3E4954;
+
+  /* Papel de la vista previa de documentos (MV-07): siempre claro, como el documento real, en ambos modos */
+  --doc-paper: #FFFFFF; --doc-paper-photo: #FBFAF6; --doc-ink: #17202A; --doc-ink-2: #3E4954; --doc-rule: #E8EBEF;
+
+  /* Paleta por curso (horario · MV-06). Categórica, nunca estado: evita los tonos
+     Okabe-Ito de asistencia (azul, naranja, bermellón, celeste, rosa). bg / bar / text */
+  --course-1-bg: #DFF1EC; --course-1-bar: #1F7A66; --course-1-text: #0E4A3D;   /* turquesa */
+  --course-2-bg: #E2EAF8; --course-2-bar: #3358A8; --course-2-text: #1C3570;   /* azul */
+  --course-3-bg: #FBEFD6; --course-3-bar: #A8740F; --course-3-text: #5E3F04;   /* ocre */
+  --course-4-bg: #ECE6F8; --course-4-bar: #6A4CB8; --course-4-text: #3B2878;   /* violeta */
+  --course-5-bg: #F8E5DC; --course-5-bar: #B0532C; --course-5-text: #6B2C12;   /* terracota */
+  --course-6-bg: #E8EFD9; --course-6-bar: #61802A; --course-6-text: #344717;   /* oliva */
+
   /* Superficies especiales */
   --header-bg: color-mix(in srgb, var(--color-surface) 90%, transparent);
   --hero-bg: var(--p-900);
@@ -188,6 +203,14 @@
   --color-info-text:    #86CDF2; --color-info-soft:    color-mix(in srgb, #56B4E9 16%, var(--color-surface)); --color-info-border:    color-mix(in srgb, #56B4E9 40%, var(--color-surface)); --color-info-icon:    #86CDF2;
   --color-early-text:   #E5A1C8; --color-early-soft:   color-mix(in srgb, #CC79A7 16%, var(--color-surface)); --color-early-border:   color-mix(in srgb, #CC79A7 40%, var(--color-surface)); --color-early-icon:   #E5A1C8;
   --color-neutral-text: #9AA6B2; --color-neutral-soft: var(--color-surface-2); --color-neutral-border: var(--color-border); --color-neutral-icon: #9AA6B2;
+
+  --color-text-on-soft: #B4BEC8;
+  --course-1-bg: color-mix(in srgb, #3FB59A 18%, var(--color-surface)); --course-1-bar: #3FB59A; --course-1-text: #8ED8C6;
+  --course-2-bg: color-mix(in srgb, #6F95E3 18%, var(--color-surface)); --course-2-bar: #6F95E3; --course-2-text: #A9C1F2;
+  --course-3-bg: color-mix(in srgb, #D3A13A 18%, var(--color-surface)); --course-3-bar: #D3A13A; --course-3-text: #EBC676;
+  --course-4-bg: color-mix(in srgb, #9C82E6 18%, var(--color-surface)); --course-4-bar: #9C82E6; --course-4-text: #C6B5F2;
+  --course-5-bg: color-mix(in srgb, #D9805A 18%, var(--color-surface)); --course-5-bar: #D9805A; --course-5-text: #F0AE90;
+  --course-6-bg: color-mix(in srgb, #93B456 18%, var(--color-surface)); --course-6-bar: #93B456; --course-6-text: #BCD58C;
 
   --header-bg: color-mix(in srgb, var(--color-surface) 88%, transparent);
   --hero-bg: color-mix(in srgb, var(--p-900) 55%, #0B0E12);
